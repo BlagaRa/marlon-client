@@ -16,8 +16,12 @@ const CONFIG = {
   autoRedirectMs: 5000,
 };
 
-// pune aici workflow_id-ul tău Onfido
-const WORKFLOW_ID = "817363d2-dc4d-4385-9720-fed153278775";
+// ENV — citim workflow_id + backend URL
+const WORKFLOW_ID = import.meta.env.VITE_WORKFLOW_ID || "";
+const API_ORIGIN = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
+
+// helper: face URL absolut dacă ai VITE_API_URL, altfel rămas relativ pt. proxy în dev
+const api = (path) => `${API_ORIGIN}${path}`;
 
 /* ==== helper-e funcționale (fără impact vizual) ==== */
 async function fetchJSON(url, opts = {}) {
@@ -31,7 +35,7 @@ async function fetchJSON(url, opts = {}) {
 async function waitForWebhook(runId, { tries = 60, intervalMs = 2000 } = {}) {
   for (let i = 0; i < tries; i++) {
     try {
-      const data = await fetchJSON(`/api/webhook_runs/${encodeURIComponent(runId)}`);
+      const data = await fetchJSON(api(`/api/webhook_runs/${encodeURIComponent(runId)}`));
       return data; // webhook a sosit
     } catch {
       // 404 => încă nu a sosit, mai așteptăm
@@ -161,14 +165,13 @@ export default function App() {
   const onfidoRef = useRef(null);
   const redirectTimerRef = useRef(null);
 
-  // shortcuts demo optional (nemodificat)
+  // shortcuts demo (lăsate fix cum erau, doar fără redirect automat)
   useEffect(() => {
     const url = new URL(window.location.href);
     const force = (url.searchParams.get("force") || "").toLowerCase();
     if (!force) return;
     if (force === "approved") {
       setView("approved");
-      // păstrăm UI-ul tău exact — nu mai facem redirect automat
     } else if (force === "failed") {
       setErrorMsg("Outcome: failed (demo)");
       setView("failed");
@@ -188,7 +191,7 @@ export default function App() {
     }
   }, []);
 
-  // funcția ta originală — o lăsăm, dar nu o mai apelăm după onComplete
+  // lăsăm funcția ta originală (nu mai e folosită după onComplete)
   function startRedirectCountdown() {
     clearTimeout(redirectTimerRef.current);
     redirectTimerRef.current = setTimeout(() => {
@@ -201,12 +204,10 @@ export default function App() {
     }, CONFIG.autoRedirectMs);
   }
 
-  // luăm rezultatele finale din backend (după ce a venit webhook-ul)
+  // ia rezultatele finale din backend (după ce a venit webhook-ul)
   async function loadFinalData(id) {
     try {
-      const res = await fetch(`/api/workflow_runs/${encodeURIComponent(id)}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || JSON.stringify(data));
+      const data = await fetchJSON(api(`/api/workflow_runs/${encodeURIComponent(id)}`));
 
       if ((data?.status || "").toLowerCase() !== "approved") {
         setErrorMsg(`Status: ${data?.status || "unknown"}`);
@@ -240,22 +241,18 @@ export default function App() {
 
     try {
       // 1) creează applicant
-      const a = await fetch(`/api/applicants`, {
+      const applicant = await fetchJSON(api(`/api/applicants`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ first_name: firstName, last_name: lastName, email }),
       });
-      const applicant = await a.json();
-      if (!a.ok) throw new Error(applicant?.error || JSON.stringify(applicant));
 
       // 2) creează workflow_run
-      const r = await fetch(`/api/workflow_runs`, {
+      const run = await fetchJSON(api(`/api/workflow_runs`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workflow_id: WORKFLOW_ID, applicant_id: applicant.id }),
       });
-      const run = await r.json();
-      if (!r.ok) throw new Error(run?.error || JSON.stringify(run));
 
       setRunId(run.id);
       setView("workflow");
@@ -269,9 +266,9 @@ export default function App() {
         onComplete: async () => {
           setView("approved"); // păstrăm ecranul tău "approved"
           try {
-            // AICI e schimbarea: așteptăm să vină webhook-ul în backend
+            // așteptăm webhook-ul în backend
             await waitForWebhook(run.id);
-            // apoi luăm datele finale din backend (nume, doc, dob, etc.)
+            // apoi luăm datele finale din backend
             await loadFinalData(run.id);
           } catch (err) {
             setErrorMsg(err.message || String(err));

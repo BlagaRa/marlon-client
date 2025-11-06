@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      // în dev, trimite /api către backendul live de pe Render
+      // în dev, poți lăsa /api relativ și folosești proxy -> Render
       "/api": {
         target: "https://marlon-app-2.onrender.com",
         changeOrigin: true,
