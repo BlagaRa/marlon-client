@@ -16,14 +16,12 @@ const CONFIG = {
   autoRedirectMs: 5000,
 };
 
-// ENV — citim workflow_id + backend URL
+// ENV
 const WORKFLOW_ID = import.meta.env.VITE_WORKFLOW_ID || "";
 const API_ORIGIN = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
-
-// helper: face URL absolut dacă ai VITE_API_URL, altfel rămas relativ pt. proxy în dev
 const api = (path) => `${API_ORIGIN}${path}`;
 
-/* ==== helper-e funcționale (fără impact vizual) ==== */
+/* ==== helpers ==== */
 async function fetchJSON(url, opts = {}) {
   const res = await fetch(url, opts);
   const data = await res.json().catch(() => ({}));
@@ -31,15 +29,13 @@ async function fetchJSON(url, opts = {}) {
   return data;
 }
 
-// așteaptă până ajunge webhook-ul în backend (polling pe /api/webhook_runs/:runId)
+// așteaptă până ajunge webhook-ul (poll pe /api/webhook_runs/:runId)
 async function waitForWebhook(runId, { tries = 100, intervalMs = 5000 } = {}) {
   for (let i = 0; i < tries; i++) {
     try {
       const data = await fetchJSON(api(`/api/webhook_runs/${encodeURIComponent(runId)}`));
-      return data; // webhook a sosit
-    } catch {
-      // 404 => încă nu a sosit, mai așteptăm
-    }
+      return data;
+    } catch {}
     await new Promise((r) => setTimeout(r, intervalMs));
   }
   throw new Error("Timeout waiting for webhook");
@@ -153,31 +149,40 @@ function InfoRow({ label, value }) {
 }
 
 export default function App() {
-  const [view, setView] = useState("home"); // "home" | "form" | "workflow" | "approved" | "failed" | "error" | "final"
+  const [view, setView] = useState("home"); // home | form | workflow | pending | error | final
   const [firstName, setFirstName] = useState("Razvan");
   const [lastName, setLastName] = useState("Blaga");
   const [email, setEmail] = useState("razvanblaga10@gmail.com");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [runId, setRunId] = useState(null);
-  const [finalData, setFinalData] = useState(null); // datele finale pentru afișare
+  const [finalData, setFinalData] = useState(null);
 
   const onfidoRef = useRef(null);
   const redirectTimerRef = useRef(null);
 
-  // shortcuts demo (lăsate fix cum erau, doar fără redirect automat)
+  // shortcuts demo (nemodificate vizual)
   useEffect(() => {
     const url = new URL(window.location.href);
     const force = (url.searchParams.get("force") || "").toLowerCase();
     if (!force) return;
     if (force === "approved") {
-      setView("approved");
-    } else if (force === "failed") {
-      setErrorMsg("Outcome: failed (demo)");
-      setView("failed");
-    } else if (force === "final") {
+      // doar pentru demo: sari direct la final „approved”
       setFinalData({
         status: "approved",
+        first_name: "Razvan",
+        last_name: "Blaga",
+        gender: "M",
+        date_of_birth: "1992-06-15",
+        document_number: "RO1234567",
+        document_type: "passport",
+        date_expiry: "2032-06-15",
+        workflow_run_id: "demo123"
+      });
+      setView("final");
+    } else if (force === "failed") {
+      setFinalData({
+        status: "review",
         first_name: "Razvan",
         last_name: "Blaga",
         gender: "M",
@@ -191,7 +196,6 @@ export default function App() {
     }
   }, []);
 
-  // lăsăm funcția ta originală (nu mai e folosită după onComplete)
   function startRedirectCountdown() {
     clearTimeout(redirectTimerRef.current);
     redirectTimerRef.current = setTimeout(() => {
@@ -204,17 +208,12 @@ export default function App() {
     }, CONFIG.autoRedirectMs);
   }
 
-  // ia rezultatele finale din backend (după ce a venit webhook-ul)
   async function loadFinalData(id) {
     try {
       const data = await fetchJSON(api(`/api/workflow_runs/${encodeURIComponent(id)}`));
 
-      if ((data?.status || "").toLowerCase() !== "approved") {
-        setErrorMsg(`Status: ${data?.status || "unknown"}`);
-        setView("failed");
-        return;
-      }
-
+      // mereu mergem la pagina cu DETALII.
+      // dacă status !== approved, afișăm un banner roșu pe aceeași pagină (demo)
       setFinalData({
         status: data.status,
         first_name: data.first_name,
@@ -240,14 +239,14 @@ export default function App() {
     setErrorMsg("");
 
     try {
-      // 1) creează applicant
+      // 1) applicant
       const applicant = await fetchJSON(api(`/api/applicants`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ first_name: firstName, last_name: lastName, email }),
       });
 
-      // 2) creează workflow_run
+      // 2) workflow_run
       const run = await fetchJSON(api(`/api/workflow_runs`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -257,18 +256,17 @@ export default function App() {
       setRunId(run.id);
       setView("workflow");
 
-      // 3) pornește SDK Onfido
+      // 3) Onfido SDK
       onfidoRef.current?.tearDown?.();
       onfidoRef.current = Onfido.init({
         token: run.sdk_token,
         workflowRunId: run.id,
         containerId: "onfido-mount",
         onComplete: async () => {
-          setView("approved"); // păstrăm ecranul tău "approved"
+          // ecran clar după upload – verificăm în fundal
+          setView("pending");
           try {
-            // așteptăm webhook-ul în backend
             await waitForWebhook(run.id);
-            // apoi luăm datele finale din backend
             await loadFinalData(run.id);
           } catch (err) {
             setErrorMsg(err.message || String(err));
@@ -304,6 +302,8 @@ export default function App() {
   }, []);
 
   const startForm = () => setView("form");
+
+  const isApproved = (finalData?.status || "").toLowerCase() === "approved";
 
   return (
     <FullBg view={view} clickable={view === "home"} onActivate={startForm}>
@@ -360,34 +360,14 @@ export default function App() {
           </OverlayCard>
         )}
 
-        {/* APPROVED */}
-        {view === "approved" && (
+        {/* PENDING (mesaj clar după upload) */}
+        {view === "pending" && (
           <WhiteScreen
-            title="Everything looks perfect!"
-            subtitle={`You're approved. Redirecting in ${Math.floor(CONFIG.autoRedirectMs / 1000)} seconds…`}
+            title="Thank you for uploading"
+            subtitle="We are currently verifying your information. This may take a few minutes."
             ok
             navbarUrl={CONFIG.navbars.success}
             onBack={closeAndCleanup}
-          />
-        )}
-
-        {/* FAILED */}
-        {view === "failed" && (
-          <WhiteScreen
-            title="We need to do further verification"
-            subtitle={
-              <span>
-                Please call us at <span className="font-bold">{CONFIG.supportPhone}</span> and reference
-                <span className="font-bold"> {CONFIG.referenceCode}</span>.
-              </span>
-            }
-            danger={errorMsg || "Verification did not pass."}
-            navbarUrl={CONFIG.navbars.failure}
-            onBack={closeAndCleanup}
-            onRetry={() => {
-              setView("form");
-              setErrorMsg("");
-            }}
           />
         )}
 
@@ -405,11 +385,13 @@ export default function App() {
           />
         )}
 
-        {/* FINAL PAGE */}
+        {/* FINAL PAGE — arată detaliile indiferent de status (demo) */}
         {view === "final" && finalData && (
           <div className="mx-auto my-10 w-full max-w-3xl px-4">
             <div className="mb-6 flex items-center justify-between">
-              <h1 className="text-3xl font-extrabold tracking-tight">You're approved ✅</h1>
+              <h1 className="text-3xl font-extrabold tracking-tight">
+                {isApproved ? "You're approved ✅" : "We need to do further verification"}
+              </h1>
               <button
                 onClick={closeAndCleanup}
                 className="rounded-xl border border-black/10 bg-white px-4 py-2 font-bold shadow-sm hover:bg-gray-50"
@@ -417,6 +399,16 @@ export default function App() {
                 Back to home
               </button>
             </div>
+
+            {!isApproved && (
+              <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-800">
+                <p className="font-semibold">Status: {finalData.status ?? "unknown"}</p>
+                <p className="text-sm mt-1">
+                  Please call us at <span className="font-bold">{CONFIG.supportPhone}</span> and reference
+                  <span className="font-bold"> {CONFIG.referenceCode}</span>.
+                </p>
+              </div>
+            )}
 
             <p className="mb-6 text-gray-700">
               Here is a summary of the details we extracted from your document. If anything looks off,
