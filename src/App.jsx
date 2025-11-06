@@ -32,7 +32,7 @@ async function fetchJSON(url, opts = {}) {
 }
 
 // așteaptă până ajunge webhook-ul în backend (polling pe /api/webhook_runs/:runId)
-async function waitForWebhook(runId, { tries = 60, intervalMs = 2000 } = {}) {
+async function waitForWebhook(runId, { tries = 100, intervalMs = 5000 } = {}) {
   for (let i = 0; i < tries; i++) {
     try {
       const data = await fetchJSON(api(`/api/webhook_runs/${encodeURIComponent(runId)}`));
@@ -451,14 +451,6 @@ export default function App() {
           </div>
         )}
 
-        {/* home view hint */}
-        {view === "home" && (
-          <div className="pointer-events-none fixed inset-0 flex items-end justify-center p-6">
-            <div className="rounded-xl bg-white/80 px-4 py-2 text-sm font-semibold shadow-sm">
-              Click anywhere to start verification
-            </div>
-          </div>
-        )}
       </div>
     </FullBg>
   );
