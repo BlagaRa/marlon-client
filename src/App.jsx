@@ -428,18 +428,7 @@ export default function App() {
               )}
             </div>
 
-            {finalData.dashboard_url && (
-              <div className="mt-6">
-                <a
-                  className="inline-block rounded-xl border border-black/10 bg-white px-4 py-2 font-bold shadow-sm hover:bg-gray-50"
-                  href={finalData.dashboard_url}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Open in Onfido Dashboard
-                </a>
-              </div>
-            )}
+            
           </div>
         )}
 
