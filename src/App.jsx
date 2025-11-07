@@ -388,12 +388,9 @@ export default function App() {
             <div className="grid gap-4">
               <InfoRow
                 label="Full name"
-                value={
-                  finalData.full_name
-                    || `${firstName} ${lastName}`.trim()
-                }
+                value={`${firstName} ${lastName}`.trim()}
               />
-              {finalData.address && <InfoRow label="Address" value={finalData.address} />}
+              <InfoRow label="Address" value={finalData.address} />
 
               <InfoRow label="Verification status" value={finalData.status} />
               <InfoRow label="Gender" value={finalData.gender} />
