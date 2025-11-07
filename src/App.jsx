@@ -415,10 +415,10 @@ export default function App() {
                 <InfoRow label="Workflow run" value={finalData.workflow_run_id} />
               )}
               {finalData.webhook?.raw_output?.full_name && (
-                <InfoRow label="Full name (webhook)" value={finalData.webhook.raw_output.full_name} />
+                <InfoRow label="Full name" value={finalData.webhook.raw_output.full_name} />
               )}
               {finalData.webhook?.raw_output?.address && (
-                <InfoRow label="Address (webhook)" value={finalData.webhook.raw_output.address} />
+                <InfoRow label="Address" value={finalData.webhook.raw_output.address} />
               )}
             </div>
 
