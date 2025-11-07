@@ -99,6 +99,7 @@ function WhiteScreen({ title, subtitle, ok, danger, onBack, onRetry, navbarUrl }
 function FullBg({ view, children, clickable = false, onActivate }) {
   const wantsBg = view === "home" || view === "form" || view === "workflow";
   const bg = CONFIG.backgrounds[view] || CONFIG.backgrounds.home;
+
   const handleKeyDown = (e) => {
     if (!clickable) return;
     if (e.key === "Enter" || e.key === " ") {
@@ -106,10 +107,15 @@ function FullBg({ view, children, clickable = false, onActivate }) {
       onActivate?.();
     }
   };
+
   if (!wantsBg || !bg) return <>{children}</>;
+
   return (
     <div
-      className={"min-h-[100svh] bg-cover bg-center bg-no-repeat " + (clickable ? "cursor-pointer outline-none" : "")}
+      className={
+        "min-h-[100svh] bg-cover bg-center bg-no-repeat " +
+        (clickable ? "cursor-pointer outline-none" : "")
+      }
       style={{ backgroundImage: `url(${bg})` }}
       onClick={clickable ? onActivate : undefined}
       onKeyDown={clickable ? handleKeyDown : undefined}
@@ -133,7 +139,7 @@ function InfoRow({ label, value }) {
 }
 
 export default function App() {
-  const [view, setView] = useState("home");
+  const [view, setView] = useState("home"); // home | form | workflow | pending | error | final
   const [firstName, setFirstName] = useState("Razvan");
   const [lastName, setLastName] = useState("Blaga");
   const [email, setEmail] = useState("razvanblaga10@gmail.com");
@@ -145,6 +151,7 @@ export default function App() {
   const onfidoRef = useRef(null);
   const redirectTimerRef = useRef(null);
 
+  // Demo shortcuts use the same keys as Onfido output
   useEffect(() => {
     const url = new URL(window.location.href);
     const force = (url.searchParams.get("force") || "").toLowerCase();
@@ -153,6 +160,8 @@ export default function App() {
       setFinalData({
         status: "approved",
         full_name: "Razvan Blaga",
+        address: "Strada Exemplu 1, Bucuresti",
+        gender: "M",
         dob: "1992-06-15",
         document_number: "RO1234567",
         document_type: "passport",
@@ -164,6 +173,8 @@ export default function App() {
       setFinalData({
         status: "review",
         full_name: "Razvan Blaga",
+        address: "Strada Exemplu 1, Bucuresti",
+        gender: "M",
         dob: "1992-06-15",
         document_number: "RO1234567",
         document_type: "passport",
@@ -177,8 +188,9 @@ export default function App() {
   function startRedirectCountdown() {
     clearTimeout(redirectTimerRef.current);
     redirectTimerRef.current = setTimeout(() => {
-      if (runId) loadFinalData(runId);
-      else {
+      if (runId) {
+        loadFinalData(runId);
+      } else {
         setErrorMsg("Missing workflow run id");
         setView("error");
       }
@@ -218,12 +230,14 @@ export default function App() {
     setErrorMsg("");
 
     try {
+      // 1) create applicant with form names
       const applicant = await fetchJSON(api(`/api/applicants`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ first_name: firstName, last_name: lastName, email }),
       });
 
+      // 2) start workflow
       const run = await fetchJSON(api(`/api/workflow_runs`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -233,6 +247,7 @@ export default function App() {
       setRunId(run.id);
       setView("workflow");
 
+      // 3) mount Onfido SDK
       onfidoRef.current?.tearDown?.();
       onfidoRef.current = Onfido.init({
         token: run.sdk_token,
@@ -272,9 +287,7 @@ export default function App() {
     setFinalData(null);
   }
 
-  useEffect(() => {
-    return () => closeAndCleanup();
-  }, []);
+  useEffect(() => () => closeAndCleanup(), []);
 
   const startForm = () => setView("form");
   const isApproved = (finalData?.status || "").toLowerCase() === "approved";
@@ -381,17 +394,16 @@ export default function App() {
             )}
 
             <p className="mb-6 text-gray-700">
-              Here is a summary of the details we extracted from your document. If anything looks off,
-              please contact support.
+              Here is a summary of the details we extracted from your document. If anything looks off, please contact support.
             </p>
 
+            {/* Show on both success and fail */}
             <div className="grid gap-4">
               <InfoRow
                 label="Full name"
-                value={`${firstName} ${lastName}`.trim()}
+                value={finalData.full_name || `${firstName} ${lastName}`.trim()}
               />
               <InfoRow label="Address" value={finalData.address} />
-
               <InfoRow label="Verification status" value={finalData.status} />
               <InfoRow label="Gender" value={finalData.gender} />
               <InfoRow label="Date of birth" value={finalData.dob} />
