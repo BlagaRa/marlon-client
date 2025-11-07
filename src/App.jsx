@@ -16,12 +16,10 @@ const CONFIG = {
   autoRedirectMs: 5000,
 };
 
-// ENV
 const WORKFLOW_ID = import.meta.env.VITE_WORKFLOW_ID || "";
 const API_ORIGIN = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
 const api = (path) => `${API_ORIGIN}${path}`;
 
-/* ==== helpers ==== */
 async function fetchJSON(url, opts = {}) {
   const res = await fetch(url, opts);
   const data = await res.json().catch(() => ({}));
@@ -29,7 +27,6 @@ async function fetchJSON(url, opts = {}) {
   return data;
 }
 
-// așteaptă până ajunge webhook-ul (poll pe /api/webhook_runs/:runId)
 async function waitForWebhook(runId, { tries = 100, intervalMs = 5000 } = {}) {
   for (let i = 0; i < tries; i++) {
     try {
@@ -149,7 +146,7 @@ function InfoRow({ label, value }) {
 }
 
 export default function App() {
-  const [view, setView] = useState("home"); // home | form | workflow | pending | error | final
+  const [view, setView] = useState("home");
   const [firstName, setFirstName] = useState("Razvan");
   const [lastName, setLastName] = useState("Blaga");
   const [email, setEmail] = useState("razvanblaga10@gmail.com");
@@ -161,13 +158,11 @@ export default function App() {
   const onfidoRef = useRef(null);
   const redirectTimerRef = useRef(null);
 
-  // shortcuts demo (nemodificate vizual)
   useEffect(() => {
     const url = new URL(window.location.href);
     const force = (url.searchParams.get("force") || "").toLowerCase();
     if (!force) return;
     if (force === "approved") {
-      // doar pentru demo: sari direct la final „approved”
       setFinalData({
         status: "approved",
         first_name: "Razvan",
@@ -210,21 +205,23 @@ export default function App() {
 
   async function loadFinalData(id) {
     try {
-      const data = await fetchJSON(api(`/api/workflow_runs/${encodeURIComponent(id)}`));
+      const [runData, webhookData] = await Promise.all([
+        fetchJSON(api(`/api/workflow_runs/${encodeURIComponent(id)}`)),
+        fetchJSON(api(`/api/webhook_runs/${encodeURIComponent(id)}`)).catch(() => null),
+      ]);
 
-      // mereu mergem la pagina cu DETALII.
-      // dacă status !== approved, afișăm un banner roșu pe aceeași pagină (demo)
       setFinalData({
-        status: data.status,
-        first_name: data.first_name,
-        last_name: data.last_name,
-        gender: data.gender,
-        date_of_birth: data.date_of_birth,
-        document_type: data.document_type,
-        document_number: data.document_number,
-        date_expiry: data.date_expiry,
-        workflow_run_id: data.workflow_run_id,
-        dashboard_url: data.dashboard_url
+        status: runData.status,
+        first_name: runData.first_name,
+        last_name: runData.last_name,
+        gender: runData.gender,
+        date_of_birth: runData.date_of_birth,
+        document_type: runData.document_type,
+        document_number: runData.document_number,
+        date_expiry: runData.date_expiry,
+        workflow_run_id: runData.workflow_run_id,
+        dashboard_url: runData.dashboard_url,
+        webhook: webhookData || null,
       });
       setView("final");
     } catch (e) {
@@ -239,14 +236,12 @@ export default function App() {
     setErrorMsg("");
 
     try {
-      // 1) applicant
       const applicant = await fetchJSON(api(`/api/applicants`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ first_name: firstName, last_name: lastName, email }),
       });
 
-      // 2) workflow_run
       const run = await fetchJSON(api(`/api/workflow_runs`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -256,14 +251,12 @@ export default function App() {
       setRunId(run.id);
       setView("workflow");
 
-      // 3) Onfido SDK
       onfidoRef.current?.tearDown?.();
       onfidoRef.current = Onfido.init({
         token: run.sdk_token,
         workflowRunId: run.id,
         containerId: "onfido-mount",
         onComplete: async () => {
-          // ecran clar după upload – verificăm în fundal
           setView("pending");
           try {
             await waitForWebhook(run.id);
@@ -302,13 +295,11 @@ export default function App() {
   }, []);
 
   const startForm = () => setView("form");
-
   const isApproved = (finalData?.status || "").toLowerCase() === "approved";
 
   return (
     <FullBg view={view} clickable={view === "home"} onActivate={startForm}>
       <div className="min-h-[100svh]">
-        {/* FORM / WORKFLOW modal */}
         {(view === "form" || view === "workflow") && (
           <OverlayCard
             title={view === "form" ? "Applicant details" : "Verify your identity"}
@@ -360,7 +351,6 @@ export default function App() {
           </OverlayCard>
         )}
 
-        {/* PENDING (mesaj clar după upload) */}
         {view === "pending" && (
           <WhiteScreen
             title="Thank you for uploading"
@@ -371,7 +361,6 @@ export default function App() {
           />
         )}
 
-        {/* ERROR */}
         {view === "error" && (
           <WhiteScreen
             title="Something went wrong"
@@ -385,7 +374,6 @@ export default function App() {
           />
         )}
 
-        {/* FINAL PAGE — arată detaliile indiferent de status (demo) */}
         {view === "final" && finalData && (
           <div className="mx-auto my-10 w-full max-w-3xl px-4">
             <div className="mb-6 flex items-center justify-between">
@@ -426,12 +414,26 @@ export default function App() {
               {finalData.workflow_run_id && (
                 <InfoRow label="Workflow run" value={finalData.workflow_run_id} />
               )}
+              {finalData.webhook?.raw_output?.full_name && (
+                <InfoRow label="Full name (webhook)" value={finalData.webhook.raw_output.full_name} />
+              )}
+              {finalData.webhook?.raw_output?.address && (
+                <InfoRow label="Address (webhook)" value={finalData.webhook.raw_output.address} />
+              )}
             </div>
 
-            
+            {finalData.webhook && (
+              <div className="mt-8">
+                <h2 className="text-xl font-extrabold mb-2">Webhook payload</h2>
+                <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 overflow-x-auto">
+                  <pre className="text-xs leading-snug">
+{JSON.stringify(finalData.webhook.raw_payload || finalData.webhook, null, 2)}
+                  </pre>
+                </div>
+              </div>
+            )}
           </div>
         )}
-
       </div>
     </FullBg>
   );
