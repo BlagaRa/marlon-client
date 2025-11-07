@@ -2,15 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { Onfido } from "onfido-sdk-ui";
 
 const CONFIG = {
-  backgrounds: {
-    home: "/bank2.png",
-    form: "/bank2.png",
-    workflow: "/bank2.png",
-  },
-  navbars: {
-    success: "/success-banner.png",
-    failure: "/faile-banner.png",
-  },
+  backgrounds: { home: "/bank2.png", form: "/bank2.png", workflow: "/bank2.png" },
+  navbars: { success: "/success-banner.png", failure: "/faile-banner.png" },
   supportPhone: "1 (800) 999-0000",
   referenceCode: "Onboarding Verification 05jx1-0fmt",
   autoRedirectMs: 5000,
@@ -106,7 +99,6 @@ function WhiteScreen({ title, subtitle, ok, danger, onBack, onRetry, navbarUrl }
 function FullBg({ view, children, clickable = false, onActivate }) {
   const wantsBg = view === "home" || view === "form" || view === "workflow";
   const bg = CONFIG.backgrounds[view] || CONFIG.backgrounds.home;
-
   const handleKeyDown = (e) => {
     if (!clickable) return;
     if (e.key === "Enter" || e.key === " ") {
@@ -114,15 +106,10 @@ function FullBg({ view, children, clickable = false, onActivate }) {
       onActivate?.();
     }
   };
-
   if (!wantsBg || !bg) return <>{children}</>;
-
   return (
     <div
-      className={
-        "min-h-[100svh] bg-cover bg-center bg-no-repeat " +
-        (clickable ? "cursor-pointer outline-none" : "")
-      }
+      className={"min-h-[100svh] bg-cover bg-center bg-no-repeat " + (clickable ? "cursor-pointer outline-none" : "")}
       style={{ backgroundImage: `url(${bg})` }}
       onClick={clickable ? onActivate : undefined}
       onKeyDown={clickable ? handleKeyDown : undefined}
@@ -165,27 +152,23 @@ export default function App() {
     if (force === "approved") {
       setFinalData({
         status: "approved",
-        first_name: "Razvan",
-        last_name: "Blaga",
-        gender: "M",
-        date_of_birth: "1992-06-15",
+        full_name: "Razvan Blaga",
+        dob: "1992-06-15",
         document_number: "RO1234567",
         document_type: "passport",
         date_expiry: "2032-06-15",
-        workflow_run_id: "demo123"
+        workflow_run_id: "demo123",
       });
       setView("final");
     } else if (force === "failed") {
       setFinalData({
         status: "review",
-        first_name: "Razvan",
-        last_name: "Blaga",
-        gender: "M",
-        date_of_birth: "1992-06-15",
+        full_name: "Razvan Blaga",
+        dob: "1992-06-15",
         document_number: "RO1234567",
         document_type: "passport",
         date_expiry: "2032-06-15",
-        workflow_run_id: "demo123"
+        workflow_run_id: "demo123",
       });
       setView("final");
     }
@@ -194,9 +177,8 @@ export default function App() {
   function startRedirectCountdown() {
     clearTimeout(redirectTimerRef.current);
     redirectTimerRef.current = setTimeout(() => {
-      if (runId) {
-        loadFinalData(runId);
-      } else {
+      if (runId) loadFinalData(runId);
+      else {
         setErrorMsg("Missing workflow run id");
         setView("error");
       }
@@ -212,13 +194,13 @@ export default function App() {
 
       setFinalData({
         status: runData.status,
-        first_name: runData.first_name,
-        last_name: runData.last_name,
-        gender: runData.gender,
-        date_of_birth: runData.date_of_birth,
-        document_type: runData.document_type,
-        document_number: runData.document_number,
-        date_expiry: runData.date_expiry,
+        full_name: runData.full_name ?? null,
+        address: runData.address ?? null,
+        gender: runData.gender ?? null,
+        dob: runData.dob ?? null,
+        document_type: runData.document_type ?? null,
+        document_number: runData.document_number ?? null,
+        date_expiry: runData.date_expiry ?? null,
         workflow_run_id: runData.workflow_run_id,
         dashboard_url: runData.dashboard_url,
         webhook: webhookData || null,
@@ -404,22 +386,22 @@ export default function App() {
             </p>
 
             <div className="grid gap-4">
+              <InfoRow
+                label="Full name"
+                value={
+                  finalData.full_name
+                    || `${firstName} ${lastName}`.trim()
+                }
+              />
+              {finalData.address && <InfoRow label="Address" value={finalData.address} />}
+
               <InfoRow label="Verification status" value={finalData.status} />
-              <InfoRow label="Full name" value={`${finalData.first_name ?? ""} ${finalData.last_name ?? ""}`} />
               <InfoRow label="Gender" value={finalData.gender} />
-              <InfoRow label="Date of birth" value={finalData.date_of_birth} />
+              <InfoRow label="Date of birth" value={finalData.dob} />
               <InfoRow label="Document number" value={finalData.document_number} />
               <InfoRow label="Document type" value={finalData.document_type} />
               <InfoRow label="Date of expiry" value={finalData.date_expiry} />
-              {finalData.workflow_run_id && (
-                <InfoRow label="Workflow run" value={finalData.workflow_run_id} />
-              )}
-              {finalData.webhook?.raw_output?.full_name && (
-                <InfoRow label="Full name" value={finalData.webhook.raw_output.full_name} />
-              )}
-              {finalData.webhook?.raw_output?.address && (
-                <InfoRow label="Address" value={finalData.webhook.raw_output.address} />
-              )}
+              {finalData.workflow_run_id && <InfoRow label="Workflow run" value={finalData.workflow_run_id} />}
             </div>
 
             {finalData.webhook && (
