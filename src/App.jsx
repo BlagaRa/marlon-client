@@ -24,17 +24,11 @@ async function waitForWebhook(runId, { tries = 200, intervalMs = 2000 } = {}) {
     try {
       const data = await fetchJSON(api(`/api/webhook_runs/${encodeURIComponent(runId)}`));
       
-      // CRITICAL CHANGE: Do not return if status is "processing".
-      // We must wait for the final status (approved, declined, review) 
-      // to ensure we have received ALL webhooks, including the data extraction one.
       const status = (data.status || "").toLowerCase();
       
       if (status === "approved" || status === "declined" || status === "review" || status === "abandoned") {
           return data;
       }
-      
-      // Optional: If you see 'processing' but already have the data, you COULD return, 
-      // but it's safer to wait for the final flag to catch all 9 webhooks.
     } catch {}
     await new Promise((r) => setTimeout(r, intervalMs));
   }
@@ -44,7 +38,8 @@ async function waitForWebhook(runId, { tries = 200, intervalMs = 2000 } = {}) {
 function OverlayCard({ title, subtitle, onClose, children }) {
   return (
     <div className="fixed inset-0 z-40 grid place-items-center bg-black/30 backdrop-blur-sm p-4">
-      <div className="w-full max-w-2xl max-h-[92svh] overflow-y-auto rounded-2xl border border-black/10 bg-white shadow-2xl">
+      {/* UPDATED: Increased max-height to 98svh to make it taller and avoid scrolling */}
+      <div className="w-full max-w-2xl max-h-[98svh] h-fit overflow-y-auto rounded-2xl border border-black/10 bg-white shadow-2xl">
         <div className="flex items-center justify-between px-6 py-4 border-b border-black/10">
           <h2 className="m-0 text-2xl font-extrabold text-gray-900">{title}</h2>
           <button
@@ -75,13 +70,16 @@ function WhiteScreen({ title, subtitle, danger, onBack, onRetry, navbarUrl, chil
       
       <div className="mx-auto max-w-xl px-6 py-6">
         <h1 className="text-2xl font-extrabold text-gray-900">{title}</h1>
-        {subtitle && <p className="mt-2 text-gray-600">{subtitle}</p>}
         
+        {/* UPDATED: Moved Danger/Manual Review message ABOVE the subtitle */}
         {danger && (
-          <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-rose-800">
+          <div className="mt-3 mb-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-rose-800 font-bold">
             ⚠ {danger}
           </div>
         )}
+
+        {subtitle && <p className="mt-2 text-gray-600">{subtitle}</p>}
+        
         <div className="mt-4 flex gap-2">
           <button
             onClick={onBack}
@@ -181,7 +179,6 @@ export default function App() {
       fetchJSON(api(`/api/webhook_runs/${encodeURIComponent(id)}`)).catch(() => null),
     ]);
 
-    // Combine outputs from the API run call and the accumulated webhook data
     const combinedOutput = {
       ...(runData.output || {}),
       ...(webhookData?.raw_output || {}),
@@ -273,9 +270,12 @@ export default function App() {
   const webhookResult = finalData?.webhook?.result;
   const breakdown = finalData?.webhook?.breakdown || {};
   
-  // Access nested breakdown fields safely
+  // UPDATED: Robust data extraction for Tampering and Security Features
   const visualAuth = breakdown?.visual_authenticity?.result;
+  
+  // Deep extraction to ensure we don't get "undefined" if intermediate keys are missing
   const digitalTampering = breakdown?.visual_authenticity?.breakdown?.digital_tampering?.result;
+  const securityFeatures = breakdown?.visual_authenticity?.breakdown?.security_features?.result;
 
   // Robust address formatting
   let addressStr = "—";
@@ -283,7 +283,6 @@ export default function App() {
     if (typeof finalData.address === "string") {
         addressStr = finalData.address;
     } else if (typeof finalData.address === "object") {
-        // Extract address parts, handle line1 specifically as seen in payload
         const { line1, town, state, country, postcode } = finalData.address;
         addressStr = [line1, town, state, postcode, country].filter(Boolean).join(", ");
     }
@@ -343,7 +342,8 @@ export default function App() {
                 </div>
               </form>
             ) : (
-              <div id="onfido-mount" className="min-h-[480px]" />
+              // UPDATED: Increased min-height to 600px to avoid inner scrollbars
+              <div id="onfido-mount" className="min-h-[600px]" />
             )}
           </OverlayCard>
         )}
@@ -374,6 +374,7 @@ export default function App() {
         {view === "final" && finalData && (
           <WhiteScreen
             title={isApproved ? "You're approved ✅" : "Process Complete"}
+            // Subtitle now only contains the phone number message
             subtitle={
               isApproved
                 ? "Your verification looks good."
@@ -382,6 +383,7 @@ export default function App() {
             navbarUrl={isApproved ? CONFIG.navbars.success : CONFIG.navbars.failure}
             onBack={closeAndCleanup}
             onRetry={!isApproved ? () => setView("form") : undefined}
+            // Warning message passed as danger
             danger={!isApproved ? errorReason : undefined}
           >
             <div className="grid gap-4">
@@ -401,6 +403,8 @@ export default function App() {
               <InfoRow label="Overall Result" value={webhookResult} isBadge />
               <InfoRow label="Visual Authenticity" value={visualAuth} isBadge />
               <InfoRow label="Digital Tampering" value={digitalTampering} isBadge />
+              {/* UPDATED: Added Security Features */}
+              <InfoRow label="Security Features" value={securityFeatures} isBadge />
             </div>
           </WhiteScreen>
         )}
