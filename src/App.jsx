@@ -4,8 +4,8 @@ import { Onfido } from "onfido-sdk-ui";
 const CONFIG = {
   backgrounds: { home: "/bank2.png", form: "/bank2.png", workflow: "/bank2.png" },
   navbars: { success: "/results-banner.png", failure: "/results-banner.png" },
-  supportPhone: "1 (800) 999-0000",
-  referenceCode: "Onboarding Verification 05jx1-0fmt",
+  supportPhone: "1(800) 999-0000",
+  referenceCode: "Onboarding Verification 05JX1-0WWE",
 };
 
 const WORKFLOW_ID = import.meta.env.VITE_WORKFLOW_ID || "";
@@ -288,7 +288,7 @@ export default function App() {
     }
   }
 
-  const errorReason = (!isApproved ? "Verification requires manual review." : undefined);
+  const errorReason = (!isApproved ? "Identity Verification will require additional review." : undefined);
 
   return (
     <FullBg view={view} clickable={view === "home"} onActivate={() => setView("form")}>
