@@ -1,6 +1,5 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState } from "react";
 import { Onfido } from "onfido-sdk-ui";
-import confetti from "canvas-confetti"; 
 
 const CONFIG = {
   backgrounds: { home: "/bank2.png", form: "/bank2.png", workflow: "/bank2.png" },
@@ -39,9 +38,6 @@ async function waitForWebhook(runId, { tries = 200, intervalMs = 2000 } = {}) {
   throw new Error("Timeout waiting for completion");
 }
 
-// --- UI COMPONENTS (Premium Styles) ---
-
-// 1. Glassmorphism Card
 function OverlayCard({ title, subtitle, onClose, children }) {
   return (
     <div className="fixed inset-0 z-40 grid place-items-center bg-black/40 backdrop-blur-sm p-4 overflow-x-hidden">
@@ -62,7 +58,6 @@ function OverlayCard({ title, subtitle, onClose, children }) {
   );
 }
 
-// 2. Polished WhiteScreen
 function WhiteScreen({ title, subtitle, danger, onBack, onRetry, navbarUrl, children }) {
   return (
     <div className="fixed inset-0 z-30 overflow-x-hidden overflow-y-auto bg-gray-50">
@@ -82,7 +77,6 @@ function WhiteScreen({ title, subtitle, danger, onBack, onRetry, navbarUrl, chil
 
         {subtitle && <p className="mt-2 text-lg text-gray-600 break-words leading-relaxed">{subtitle}</p>}
         
-        {/* Buttons */}
         <div className="mt-6 flex gap-3 flex-wrap">
           <button
             onClick={onBack}
@@ -125,27 +119,43 @@ function FullBg({ view, children, clickable = false, onActivate }) {
   );
 }
 
-// 3. Result Badge with Icons (Visual Upgrade)
+// 3. Result Badge - Updated Colors & Logic
 function ResultBadge({ value }) {
   const normalized = (value || "").toLowerCase();
-  
-  if (normalized === "clear") {
+  const label = value ? value.charAt(0).toUpperCase() + value.slice(1) : "—";
+
+  // GREEN: Approved, Clear
+  if (normalized === "clear" || normalized === "approved") {
     return (
       <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-sm">
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-        Clear
+        {label}
       </span>
     );
-  } else if (normalized === "consider" || normalized === "suspected") {
+  } 
+  
+  // YELLOW/ORANGE: Review, Consider, Suspected
+  else if (["review", "consider", "suspected"].includes(normalized)) {
     return (
       <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold bg-amber-100 text-amber-800 border border-amber-200 shadow-sm">
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-        {value ? value.charAt(0).toUpperCase() + value.slice(1) : "Consider"}
+        {label}
       </span>
     );
   }
 
-  return <span className="text-gray-400 font-normal">—</span>;
+  // RED: Declined, Rejected, Abandoned
+  else if (["declined", "rejected", "abandoned"].includes(normalized)) {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold bg-rose-100 text-rose-800 border border-rose-200 shadow-sm">
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+        {label}
+      </span>
+    );
+  }
+
+  // DEFAULT / UNKNOWN
+  return <span className="text-gray-400 font-normal">{label}</span>;
 }
 
 function InfoRow({ label, value, isBadge }) {
@@ -172,30 +182,6 @@ export default function App() {
   const [finalData, setFinalData] = useState(null);
 
   const onfidoRef = useRef(null);
-
-  // --- CONFETTI EFFECT ---
-  const subResultVal = (finalData?.sub_result || "").toLowerCase();
-  const isClear = subResultVal === "clear";
-
-  useEffect(() => {
-    if (view === "final" && isClear) {
-      const duration = 3000;
-      const animationEnd = Date.now() + duration;
-      const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 50 };
-
-      const randomInRange = (min, max) => Math.random() * (max - min) + min;
-
-      const interval = setInterval(function() {
-        const timeLeft = animationEnd - Date.now();
-        if (timeLeft <= 0) {
-          return clearInterval(interval);
-        }
-        const particleCount = 50 * (timeLeft / duration);
-        confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } }));
-        confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } }));
-      }, 250);
-    }
-  }, [view, isClear]);
 
   async function loadFinalData(id) {
     const [runData, webhookData] = await Promise.all([
@@ -315,6 +301,8 @@ export default function App() {
     }
   }
 
+  const subResultVal = (finalData?.sub_result || "").toLowerCase();
+  const isClear = subResultVal === "clear";
   const errorReason = (!isClear ? "Verification requires manual review." : undefined);
 
   return (
@@ -407,7 +395,6 @@ export default function App() {
             navbarUrl={CONFIG.navbars.success}
             onBack={closeAndCleanup}
           >
-             {/* UPDATED: Standard Rotating Spinner */}
              <div className="flex justify-center mt-12 mb-8">
                 <svg className="animate-spin h-10 w-10 text-gray-900" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -446,6 +433,8 @@ export default function App() {
           >
             <div className="grid gap-3 w-full">
               <h3 className="text-xl font-bold text-gray-900 mb-2">Detailed Results</h3>
+              {/* UPDATED: Verification Result now uses the colored badge */}
+              <InfoRow label="Verification Result" value={finalData.status} isBadge />
               <InfoRow label="Sub-Result" value={finalData.sub_result} isBadge />
               <InfoRow label="Visual Authenticity" value={visualAuth} isBadge />
               <InfoRow label="Digital Tampering" value={digitalTampering} isBadge />
