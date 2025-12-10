@@ -1,11 +1,12 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { Onfido } from "onfido-sdk-ui";
+import confetti from "canvas-confetti"; 
 
 const CONFIG = {
   backgrounds: { home: "/bank2.png", form: "/bank2.png", workflow: "/bank2.png" },
   navbars: { success: "/results-banner.png", failure: "/results-banner.png" },
-  supportPhone: "1(800) 999-0000",
-  referenceCode: "Onboarding Verification 05JX1-0WWE",
+  supportPhone: "1 (800) 999-0000",
+  referenceCode: "Onboarding Verification 05jx1-0fmt",
 };
 
 const WORKFLOW_ID = import.meta.env.VITE_WORKFLOW_ID || "";
@@ -24,10 +25,13 @@ async function waitForWebhook(runId, { tries = 200, intervalMs = 2000 } = {}) {
     try {
       const data = await fetchJSON(api(`/api/webhook_runs/${encodeURIComponent(runId)}`));
       
-      const status = (data.status || "").toLowerCase();
-      
-      if (status === "approved" || status === "declined" || status === "review" || status === "abandoned") {
-          return data;
+      if (data && Object.keys(data.raw_output || {}).length > 0) {
+          if(data.raw_output.sub_result) return data;
+          
+          const status = (data.status || "").toLowerCase();
+          if (["approved", "declined", "review", "abandoned", "completed"].includes(status)) {
+             return data;
+          }
       }
     } catch {}
     await new Promise((r) => setTimeout(r, intervalMs));
@@ -35,62 +39,61 @@ async function waitForWebhook(runId, { tries = 200, intervalMs = 2000 } = {}) {
   throw new Error("Timeout waiting for completion");
 }
 
+// --- UI COMPONENTS (Premium Styles) ---
+
+// 1. Glassmorphism Card
 function OverlayCard({ title, subtitle, onClose, children }) {
   return (
-    <div className="fixed inset-0 z-40 grid place-items-center bg-black/30 backdrop-blur-sm p-4">
-      {/* UPDATED: Increased max-height to 98svh to make it taller and avoid scrolling */}
-      <div className="w-full max-w-2xl max-h-[98svh] h-fit overflow-y-auto rounded-2xl border border-black/10 bg-white shadow-2xl">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-black/10">
-          <h2 className="m-0 text-2xl font-extrabold text-gray-900">{title}</h2>
+    <div className="fixed inset-0 z-40 grid place-items-center bg-black/40 backdrop-blur-sm p-4 overflow-x-hidden">
+      <div className="w-full max-w-2xl max-h-[98svh] h-fit overflow-y-auto rounded-3xl border border-white/40 bg-white/95 backdrop-blur-xl shadow-2xl ring-1 ring-black/5">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-black/5">
+          <h2 className="m-0 text-2xl font-extrabold text-gray-900 tracking-tight">{title}</h2>
           <button
             onClick={onClose}
-            className="inline-flex items-center gap-2 rounded-xl border border-black/10 bg-white px-3 py-2 text-sm font-bold shadow-sm hover:bg-gray-50 cursor-pointer"
-            aria-label="Close"
+            className="inline-flex items-center gap-2 rounded-xl border border-transparent bg-gray-100 px-3 py-2 text-sm font-bold text-gray-600 transition hover:bg-gray-200 cursor-pointer"
           >
             Close
           </button>
         </div>
-        {subtitle && <p className="px-6 pt-4 text-gray-600">{subtitle}</p>}
-        <div className="px-6 pb-6 pt-4">{children}</div>
+        {subtitle && <p className="px-6 pt-4 text-gray-600 font-medium">{subtitle}</p>}
+        <div className="px-6 pb-6 pt-6">{children}</div>
       </div>
     </div>
   );
 }
 
+// 2. Polished WhiteScreen
 function WhiteScreen({ title, subtitle, danger, onBack, onRetry, navbarUrl, children }) {
   return (
-    <div className="fixed inset-0 z-30 overflow-auto bg-white">
+    <div className="fixed inset-0 z-30 overflow-x-hidden overflow-y-auto bg-gray-50">
       {navbarUrl && (
-        <img 
-          src={navbarUrl} 
-          alt="Banner" 
-          className="w-full h-auto block"
-        />
+        <img src={navbarUrl} alt="Banner" className="w-full h-auto block shadow-sm" />
       )}
       
-      <div className="mx-auto max-w-xl px-6 py-6">
-        <h1 className="text-2xl font-extrabold text-gray-900">{title}</h1>
+      <div className="mx-auto max-w-xl px-4 py-8 w-full">
+        <h1 className="text-3xl font-extrabold text-gray-900 break-words tracking-tight">{title}</h1>
         
-        {/* UPDATED: Moved Danger/Manual Review message ABOVE the subtitle */}
         {danger && (
-          <div className="mt-3 mb-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-rose-800 font-bold">
-            ⚠ {danger}
+          <div className="mt-4 mb-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-800 font-bold break-words shadow-sm flex items-start gap-2">
+            <span>⚠</span>
+            {danger}
           </div>
         )}
 
-        {subtitle && <p className="mt-2 text-gray-600">{subtitle}</p>}
+        {subtitle && <p className="mt-2 text-lg text-gray-600 break-words leading-relaxed">{subtitle}</p>}
         
-        <div className="mt-4 flex gap-2">
+        {/* Buttons */}
+        <div className="mt-6 flex gap-3 flex-wrap">
           <button
             onClick={onBack}
-            className="rounded-xl border border-black/10 bg-black px-4 py-2 font-bold text-white hover:opacity-95"
+            className="rounded-xl bg-gray-900 px-6 py-3 font-bold text-white shadow-lg shadow-gray-900/20 hover:bg-black transition-all hover:-translate-y-0.5"
           >
             Back to home
           </button>
           {danger && (
             <button
               onClick={onRetry}
-              className="rounded-xl border border-black/10 bg-white px-4 py-2 font-bold hover:bg-gray-50"
+              className="rounded-xl border border-gray-200 bg-white px-6 py-3 font-bold text-gray-900 hover:bg-gray-50 transition-all"
             >
               Try again
             </button>
@@ -99,7 +102,7 @@ function WhiteScreen({ title, subtitle, danger, onBack, onRetry, navbarUrl, chil
       </div>
 
       {children && (
-        <div className="mx-auto my-10 w-full max-w-3xl px-4">
+        <div className="mx-auto my-6 w-full max-w-3xl px-4 pb-20">
           {children}
         </div>
       )}
@@ -113,48 +116,43 @@ function FullBg({ view, children, clickable = false, onActivate }) {
   if (!wantsBg) return <>{children}</>;
   return (
     <div
-      className={"min-h-[100svh] bg-cover bg-center bg-no-repeat " + (clickable ? "cursor-pointer" : "")}
+      className="min-h-[100svh] w-full bg-cover bg-center bg-no-repeat cursor-pointer overflow-x-hidden transition-all duration-700"
       style={{ backgroundImage: `url(${bg})` }}
       onClick={clickable ? onActivate : undefined}
-      role={clickable ? "button" : undefined}
-      tabIndex={clickable ? 0 : undefined}
     >
       {children}
     </div>
   );
 }
 
+// 3. Result Badge with Icons (Visual Upgrade)
 function ResultBadge({ value }) {
   const normalized = (value || "").toLowerCase();
-  const isClear = normalized === "clear";
-  const isConsider = normalized === "consider";
   
-  let bgColor = "bg-gray-100";
-  let textColor = "text-gray-600";
-  let label = value || "—";
-
-  if (isClear) {
-    bgColor = "bg-green-100";
-    textColor = "text-green-800";
-    label = "Clear";
-  } else if (isConsider) {
-    bgColor = "bg-orange-100";
-    textColor = "text-orange-800";
-    label = "Consider";
+  if (normalized === "clear") {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-sm">
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+        Clear
+      </span>
+    );
+  } else if (normalized === "consider" || normalized === "suspected") {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold bg-amber-100 text-amber-800 border border-amber-200 shadow-sm">
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+        {value ? value.charAt(0).toUpperCase() + value.slice(1) : "Consider"}
+      </span>
+    );
   }
 
-  return (
-    <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-bold ${bgColor} ${textColor}`}>
-      {label}
-    </span>
-  );
+  return <span className="text-gray-400 font-normal">—</span>;
 }
 
 function InfoRow({ label, value, isBadge }) {
   return (
-    <div className="grid grid-cols-1 gap-1 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:grid-cols-3 items-center">
-      <div className="text-sm font-semibold uppercase tracking-wide text-gray-500">{label}</div>
-      <div className="sm:col-span-2 text-gray-900 break-words font-medium">
+    <div className="grid grid-cols-1 gap-1 rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:grid-cols-3 items-center w-full transition hover:border-gray-300">
+      <div className="text-xs font-bold uppercase tracking-wider text-gray-500 whitespace-nowrap">{label}</div>
+      <div className="sm:col-span-2 text-gray-900 font-medium break-all">
         {isBadge ? <ResultBadge value={value} /> : String(value ?? "—")}
       </div>
     </div>
@@ -166,12 +164,38 @@ export default function App() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [isUsCitizen, setIsUsCitizen] = useState("no");
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [finalData, setFinalData] = useState(null);
 
   const onfidoRef = useRef(null);
+
+  // --- CONFETTI EFFECT ---
+  const subResultVal = (finalData?.sub_result || "").toLowerCase();
+  const isClear = subResultVal === "clear";
+
+  useEffect(() => {
+    if (view === "final" && isClear) {
+      const duration = 3000;
+      const animationEnd = Date.now() + duration;
+      const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 50 };
+
+      const randomInRange = (min, max) => Math.random() * (max - min) + min;
+
+      const interval = setInterval(function() {
+        const timeLeft = animationEnd - Date.now();
+        if (timeLeft <= 0) {
+          return clearInterval(interval);
+        }
+        const particleCount = 50 * (timeLeft / duration);
+        confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } }));
+        confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } }));
+      }, 250);
+    }
+  }, [view, isClear]);
 
   async function loadFinalData(id) {
     const [runData, webhookData] = await Promise.all([
@@ -184,19 +208,20 @@ export default function App() {
       ...(webhookData?.raw_output || {}),
     };
     
+    const addrObj = combinedOutput.address_lines || combinedOutput.address;
+
     setFinalData({
       status: runData.status,
+      sub_result: combinedOutput.sub_result, 
       full_name: runData.full_name || [combinedOutput.first_name, combinedOutput.last_name].filter(Boolean).join(" ") || [runData.first_name, runData.last_name].filter(Boolean).join(" "),
       workflow_run_id: runData.workflow_run_id,
-      dashboard_url: runData.dashboard_url,
       webhook: webhookData || null,
-      
-      address: combinedOutput.address,
+      address: addrObj,
       gender: combinedOutput.gender,
-      dob: combinedOutput.dob,
+      dob: combinedOutput.dob || combinedOutput.date_of_birth,
       document_number: combinedOutput.document_number,
       document_type: combinedOutput.document_type,
-      date_expiry: combinedOutput.date_expiry,
+      date_expiry: combinedOutput.date_expiry || combinedOutput.date_of_expiry,
     });
     setView("final");
   }
@@ -207,6 +232,8 @@ export default function App() {
     setErrorMsg("");
 
     try {
+      const rawPhone = phone.trim();
+
       const applicant = await fetchJSON(api(`/api/applicants`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -214,6 +241,7 @@ export default function App() {
           first_name: firstName,
           last_name: lastName,
           email,
+          phone_number: rawPhone 
         }),
       });
 
@@ -262,88 +290,112 @@ export default function App() {
     setFirstName("");
     setLastName("");
     setEmail("");
+    setPhone("");
+    setIsUsCitizen("no");
   }
 
-  const isApproved = (finalData?.status || "").toLowerCase() === "approved";
   const computedFullName = finalData?.full_name || [firstName, lastName].filter(Boolean).join(" ");
-  
-  const webhookResult = finalData?.webhook?.result;
   const breakdown = finalData?.webhook?.breakdown || {};
-  
-  // UPDATED: Robust data extraction for Tampering and Security Features
   const visualAuth = breakdown?.visual_authenticity?.result;
-  
-  // Deep extraction to ensure we don't get "undefined" if intermediate keys are missing
   const digitalTampering = breakdown?.visual_authenticity?.breakdown?.digital_tampering?.result;
   const securityFeatures = breakdown?.visual_authenticity?.breakdown?.security_features?.result;
 
-  // Robust address formatting
   let addressStr = "—";
   if (finalData?.address) {
-    if (typeof finalData.address === "string") {
-        addressStr = finalData.address;
-    } else if (typeof finalData.address === "object") {
-        const { line1, town, state, country, postcode } = finalData.address;
-        addressStr = [line1, town, state, postcode, country].filter(Boolean).join(", ");
+    if (typeof finalData.address === "object") {
+        const { town, state, postcode, country } = finalData.address;
+        addressStr = [town, state, postcode, country].filter(Boolean).join(", ");
+    } else if (typeof finalData.address === "string") {
+        const parts = finalData.address.split(",").map(s => s.trim());
+        if (parts.length > 3) {
+            addressStr = parts.slice(1).join(", "); 
+        } else {
+            addressStr = finalData.address;
+        }
     }
   }
 
-  const errorReason = (!isApproved ? "Identity Verification will require additional review." : undefined);
+  const errorReason = (!isClear ? "Verification requires manual review." : undefined);
 
   return (
     <FullBg view={view} clickable={view === "home"} onActivate={() => setView("form")}>
-      <div className="min-h-[100svh]">
+      <div className="min-h-[100svh] w-full overflow-x-hidden">
         {(view === "form" || view === "workflow") && (
           <OverlayCard
             title={view === "form" ? "Applicant details" : "Verify your identity"}
             onClose={closeAndCleanup}
           >
             {view === "form" ? (
-              <form onSubmit={handleSubmit} className="grid gap-4">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <label className="font-bold">
-                    First name
+              <form onSubmit={handleSubmit} className="grid gap-6 w-full">
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="block text-sm font-bold text-gray-700 mb-1">First name</span>
                     <input
                       value={firstName}
                       onChange={(e) => setFirstName(e.target.value)}
                       required
-                      className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:outline-none"
+                      className="w-full rounded-xl border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:ring-black transition"
                     />
                   </label>
-                  <label className="font-bold">
-                    Last name
+                  <label className="block">
+                    <span className="block text-sm font-bold text-gray-700 mb-1">Last name</span>
                     <input
                       value={lastName}
                       onChange={(e) => setLastName(e.target.value)}
                       required
-                      className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:outline-none"
+                      className="w-full rounded-xl border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:ring-black transition"
                     />
                   </label>
                 </div>
 
-                <label className="font-bold">
-                  Email
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:outline-none"
-                  />
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                    <label className="block">
+                    <span className="block text-sm font-bold text-gray-700 mb-1">Email</span>
+                    <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="w-full rounded-xl border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:ring-black transition"
+                    />
+                    </label>
+                    
+                    <label className="block">
+                    <span className="block text-sm font-bold text-gray-700 mb-1">Phone Number</span>
+                    <input
+                        type="tel"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        placeholder="+15551234567"
+                        required
+                        className="w-full rounded-xl border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:ring-black transition"
+                    />
+                    </label>
+                </div>
+
+                <label className="block">
+                    <span className="block text-sm font-bold text-gray-700 mb-1">Are you a US Citizen?</span>
+                    <select
+                        value={isUsCitizen}
+                        onChange={(e) => setIsUsCitizen(e.target.value)}
+                        className="w-full rounded-xl border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:ring-black bg-white transition"
+                    >
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                    </select>
                 </label>
 
-                <div className="mt-2 flex gap-3">
+                <div className="mt-4">
                   <button
                     type="submit"
                     disabled={loading}
-                    className="min-w-[220px] rounded-xl border border-black/10 bg-black px-5 py-3 font-extrabold text-white shadow-sm hover:opacity-95 disabled:opacity-60 cursor-pointer"
+                    className="w-full sm:w-auto rounded-xl bg-gray-900 px-8 py-4 font-extrabold text-white shadow-lg shadow-gray-900/20 hover:bg-black hover:-translate-y-0.5 transition-all disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
                   >
                     {loading ? "Submitting…" : "Create & start workflow"}
                   </button>
                 </div>
               </form>
             ) : (
-              // UPDATED: Increased min-height to 600px to avoid inner scrollbars
-              <div id="onfido-mount" className="min-h-[600px]" />
+              <div id="onfido-mount" className="min-h-[600px] w-full" />
             )}
           </OverlayCard>
         )}
@@ -354,12 +406,20 @@ export default function App() {
             subtitle="We are currently verifying your information. This may take a few minutes."
             navbarUrl={CONFIG.navbars.success}
             onBack={closeAndCleanup}
-          />
+          >
+             {/* UPDATED: Standard Rotating Spinner */}
+             <div className="flex justify-center mt-12 mb-8">
+                <svg className="animate-spin h-10 w-10 text-gray-900" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+             </div>
+          </WhiteScreen>
         )}
 
         {view === "error" && (
           <WhiteScreen
-            title="Issues encounter with verifying your identity!"
+            title="Something went wrong"
             subtitle="We couldn't complete your verification."
             danger={errorMsg}
             navbarUrl={CONFIG.navbars.failure}
@@ -373,38 +433,34 @@ export default function App() {
 
         {view === "final" && finalData && (
           <WhiteScreen
-            title={isApproved ? "You have successfully verified your identity! ✅" : "Process Complete"}
-            // Subtitle now only contains the phone number message
+            title={isClear ? "You're approved ✅" : "Process Complete"}
             subtitle={
-              isApproved
-                ? "Let's proceed with the next step of your account opening."
+              isClear
+                ? "Your verification looks good."
                 : `Please call us at ${CONFIG.supportPhone} and reference ${CONFIG.referenceCode}.`
             }
-            navbarUrl={isApproved ? CONFIG.navbars.success : CONFIG.navbars.failure}
+            navbarUrl={isClear ? CONFIG.navbars.success : CONFIG.navbars.failure}
             onBack={closeAndCleanup}
-            onRetry={!isApproved ? () => setView("form") : undefined}
-            // Warning message passed as danger
-            danger={!isApproved ? errorReason : undefined}
+            onRetry={!isClear ? () => setView("form") : undefined}
+            danger={!isClear ? errorReason : undefined}
           >
-            <div className="grid gap-4">
-              <InfoRow label="Verification Status" value={finalData.status} />
+            <div className="grid gap-3 w-full">
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Detailed Results</h3>
+              <InfoRow label="Sub-Result" value={finalData.sub_result} isBadge />
+              <InfoRow label="Visual Authenticity" value={visualAuth} isBadge />
+              <InfoRow label="Digital Tampering" value={digitalTampering} isBadge />
+              <InfoRow label="Security Features" value={securityFeatures} isBadge />
+
+              <div className="my-6 border-t border-gray-100"></div>
+
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Personal Data</h3>
               <InfoRow label="Full name" value={computedFullName || "—"} />
-              
               <InfoRow label="Address" value={addressStr} />
               <InfoRow label="Gender" value={finalData.gender} />
               <InfoRow label="Date of birth" value={finalData.dob} />
               <InfoRow label="Document number" value={finalData.document_number} />
               <InfoRow label="Document type" value={finalData.document_type} />
               <InfoRow label="Date of expiry" value={finalData.date_expiry} />
-
-              <div className="my-2 border-t border-gray-200"></div>
-              <h3 className="text-lg font-bold text-gray-900">Detailed Results</h3>
-              
-              <InfoRow label="Overall Result" value={webhookResult} isBadge />
-              <InfoRow label="Visual Authenticity" value={visualAuth} isBadge />
-              <InfoRow label="Digital Tampering" value={digitalTampering} isBadge />
-              {/* UPDATED: Added Security Features */}
-              <InfoRow label="Security Features" value={securityFeatures} isBadge />
             </div>
           </WhiteScreen>
         )}
