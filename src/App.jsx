@@ -5,7 +5,8 @@ const CONFIG = {
   backgrounds: { home: "/bank2.png", form: "/bank2.png", workflow: "/bank2.png" },
   navbars: { success: "/results-banner.png", failure: "/results-banner.png" },
   supportPhone: "1 (800) 999-0000",
-  referenceCode: "Onboarding Verification 05jx1-0fmt",
+  // MODIFICARE: Codul de referință cerut în poză
+  referenceCode: "Onboarding Verification 05JX1-0WWE",
 };
 
 const WORKFLOW_ID = import.meta.env.VITE_WORKFLOW_ID || "";
@@ -77,14 +78,16 @@ function WhiteScreen({ title, subtitle, danger, onBack, onRetry, navbarUrl, chil
 
         {subtitle && <p className="mt-2 text-lg text-gray-600 break-words leading-relaxed">{subtitle}</p>}
         
-        <div className="mt-6 flex gap-3 flex-wrap">
+        {/* MODIFICARE: mb-48 adaugă mult spațiu vertical sub butoane (aprox 5-6 inchi pe unele ecrane) */}
+        <div className="mt-6 mb-18 flex gap-3 flex-wrap">
           <button
             onClick={onBack}
             className="rounded-xl bg-gray-900 px-6 py-3 font-bold text-white shadow-lg shadow-gray-900/20 hover:bg-black transition-all hover:-translate-y-0.5"
           >
             Back to home
           </button>
-          {danger && (
+          
+          {onRetry && (
             <button
               onClick={onRetry}
               className="rounded-xl border border-gray-200 bg-white px-6 py-3 font-bold text-gray-900 hover:bg-gray-50 transition-all"
@@ -119,12 +122,10 @@ function FullBg({ view, children, clickable = false, onActivate }) {
   );
 }
 
-// 3. Result Badge - Updated Colors & Logic
 function ResultBadge({ value }) {
   const normalized = (value || "").toLowerCase();
   const label = value ? value.charAt(0).toUpperCase() + value.slice(1) : "—";
 
-  // GREEN: Approved, Clear
   if (normalized === "clear" || normalized === "approved") {
     return (
       <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-sm">
@@ -134,7 +135,6 @@ function ResultBadge({ value }) {
     );
   } 
   
-  // YELLOW/ORANGE: Review, Consider, Suspected
   else if (["review", "consider", "suspected"].includes(normalized)) {
     return (
       <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold bg-amber-100 text-amber-800 border border-amber-200 shadow-sm">
@@ -144,7 +144,6 @@ function ResultBadge({ value }) {
     );
   }
 
-  // RED: Declined, Rejected, Abandoned
   else if (["declined", "rejected", "abandoned"].includes(normalized)) {
     return (
       <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold bg-rose-100 text-rose-800 border border-rose-200 shadow-sm">
@@ -154,7 +153,6 @@ function ResultBadge({ value }) {
     );
   }
 
-  // DEFAULT / UNKNOWN
   return <span className="text-gray-400 font-normal">{label}</span>;
 }
 
@@ -303,7 +301,6 @@ export default function App() {
 
   const subResultVal = (finalData?.sub_result || "").toLowerCase();
   const isClear = subResultVal === "clear";
-  const errorReason = (!isClear ? "Verification requires manual review." : undefined);
 
   return (
     <FullBg view={view} clickable={view === "home"} onActivate={() => setView("form")}>
@@ -420,20 +417,22 @@ export default function App() {
 
         {view === "final" && finalData && (
           <WhiteScreen
-            title={isClear ? "You're approved ✅" : "Process Complete"}
+            title={isClear ? "You have successfully verified your identity!✅" : "Process Complete"}
+            
             subtitle={
               isClear
-                ? "Your verification looks good."
+                ? "Let's proceed with the next step of your account opening."
                 : `Please call us at ${CONFIG.supportPhone} and reference ${CONFIG.referenceCode}.`
             }
             navbarUrl={isClear ? CONFIG.navbars.success : CONFIG.navbars.failure}
             onBack={closeAndCleanup}
-            onRetry={!isClear ? () => setView("form") : undefined}
-            danger={!isClear ? errorReason : undefined}
+            
+            onRetry={undefined}
+            
+            danger={!isClear ? "Identity Verification will require additional review." : undefined}
           >
             <div className="grid gap-3 w-full">
               <h3 className="text-xl font-bold text-gray-900 mb-2">Detailed Results</h3>
-              {/* UPDATED: Verification Result now uses the colored badge */}
               <InfoRow label="Verification Result" value={finalData.status} isBadge />
               <InfoRow label="Sub-Result" value={finalData.sub_result} isBadge />
               <InfoRow label="Visual Authenticity" value={visualAuth} isBadge />
