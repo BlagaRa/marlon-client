@@ -19,22 +19,25 @@ async function fetchJSON(url, opts = {}) {
   return data;
 }
 
+// IMPORTANT: completion is based on MAIN status, not sub_result
 async function waitForWebhook(runId, { tries = 200, intervalMs = 2000 } = {}) {
+  const TERMINAL = ["approved", "declined", "review", "abandoned", "completed"];
+
   for (let i = 0; i < tries; i++) {
     try {
       const data = await fetchJSON(api(`/api/webhook_runs/${encodeURIComponent(runId)}`));
-      
+
       if (data && Object.keys(data.raw_output || {}).length > 0) {
-          if(data.raw_output.sub_result) return data;
-          
-          const status = (data.status || "").toLowerCase();
-          if (["approved", "declined", "review", "abandoned", "completed"].includes(status)) {
-             return data;
-          }
+        const status = String(data.status || "").toLowerCase();
+        if (TERMINAL.includes(status)) return data;
       }
-    } catch {}
+    } catch {
+      // ignore transient errors
+    }
+
     await new Promise((r) => setTimeout(r, intervalMs));
   }
+
   throw new Error("Timeout waiting for completion");
 }
 
@@ -61,13 +64,11 @@ function OverlayCard({ title, subtitle, onClose, children }) {
 function WhiteScreen({ title, subtitle, danger, onBack, onRetry, navbarUrl, children }) {
   return (
     <div className="fixed inset-0 z-30 overflow-x-hidden overflow-y-auto bg-gray-50">
-      {navbarUrl && (
-        <img src={navbarUrl} alt="Banner" className="w-full h-auto block shadow-sm" />
-      )}
-      
+      {navbarUrl && <img src={navbarUrl} alt="Banner" className="w-full h-auto block shadow-sm" />}
+
       <div className="mx-auto max-w-xl px-4 py-8 w-full">
         <h1 className="text-3xl font-extrabold text-gray-900 break-words tracking-tight">{title}</h1>
-        
+
         {danger && (
           <div className="mt-4 mb-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-800 font-bold break-words shadow-sm flex items-start gap-2">
             <span>⚠</span>
@@ -76,8 +77,7 @@ function WhiteScreen({ title, subtitle, danger, onBack, onRetry, navbarUrl, chil
         )}
 
         {subtitle && <p className="mt-2 text-lg text-gray-600 break-words leading-relaxed">{subtitle}</p>}
-        
-        {/* MODIFICARE: mb-48 adaugă mult spațiu vertical sub butoane (aprox 5-6 inchi pe unele ecrane) */}
+
         <div className="mt-6 mb-18 flex gap-3 flex-wrap">
           <button
             onClick={onBack}
@@ -85,7 +85,7 @@ function WhiteScreen({ title, subtitle, danger, onBack, onRetry, navbarUrl, chil
           >
             Back to home
           </button>
-          
+
           {onRetry && (
             <button
               onClick={onRetry}
@@ -121,32 +121,80 @@ function FullBg({ view, children, clickable = false, onActivate }) {
   );
 }
 
-function ResultBadge({ value }) {
-  const normalized = (value || "").toLowerCase();
+// MAIN STATUS badge rules:
+// - approved = green check
+// - review = yellow warning
+// - anything else = red x
+function ResultBadge({ value, mode = "default" }) {
+  const normalized = String(value || "").toLowerCase();
   const label = value ? value.charAt(0).toUpperCase() + value.slice(1) : "—";
 
-  if (normalized === "clear" || normalized === "approved") {
+  if (mode === "workflowStatus") {
+    if (normalized === "approved") {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-sm">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+          {label}
+        </span>
+      );
+    }
+
+    if (normalized === "review") {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold bg-amber-100 text-amber-800 border border-amber-200 shadow-sm">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+            />
+          </svg>
+          {label}
+        </span>
+      );
+    }
+
     return (
-      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-sm">
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-        {label}
-      </span>
-    );
-  } 
-  
-  else if (["review", "consider", "suspected"].includes(normalized)) {
-    return (
-      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold bg-amber-100 text-amber-800 border border-amber-200 shadow-sm">
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold bg-rose-100 text-rose-800 border border-rose-200 shadow-sm">
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
         {label}
       </span>
     );
   }
 
-  else if (["declined", "rejected", "abandoned"].includes(normalized)) {
+  // Default behavior for other fields (sub_result, breakdown items, etc.)
+  if (normalized === "clear" || normalized === "approved") {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-sm">
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+        {label}
+      </span>
+    );
+  } else if (["review", "consider", "suspected"].includes(normalized)) {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold bg-amber-100 text-amber-800 border border-amber-200 shadow-sm">
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+          />
+        </svg>
+        {label}
+      </span>
+    );
+  } else if (["declined", "rejected", "abandoned"].includes(normalized)) {
     return (
       <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold bg-rose-100 text-rose-800 border border-rose-200 shadow-sm">
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
         {label}
       </span>
     );
@@ -155,21 +203,19 @@ function ResultBadge({ value }) {
   return <span className="text-gray-400 font-normal">{label}</span>;
 }
 
-function InfoRow({ label, value, isBadge }) {
+function InfoRow({ label, value, isBadge, badgeMode }) {
   return (
     <div className="grid grid-cols-1 gap-1 rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:grid-cols-3 items-center w-full transition hover:border-gray-300">
       <div className="text-xs font-bold uppercase tracking-wider text-gray-500 whitespace-nowrap">{label}</div>
       <div className="sm:col-span-2 text-gray-900 font-medium break-all">
-        {isBadge ? <ResultBadge value={value} /> : String(value ?? "—")}
+        {isBadge ? <ResultBadge value={value} mode={badgeMode} /> : String(value ?? "—")}
       </div>
     </div>
   );
 }
 
-
-
 export default function App() {
-  const [view, setView] = useState("home"); 
+  const [view, setView] = useState("home");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -181,9 +227,10 @@ export default function App() {
   const [finalData, setFinalData] = useState(null);
 
   const onfidoRef = useRef(null);
+
   function isValidPhone(phone) {
-  return /^\+\d{9,12}$/.test(phone);
-}
+    return /^\+\d{9,12}$/.test(phone);
+  }
 
   async function loadFinalData(id) {
     const [runData, webhookData] = await Promise.all([
@@ -195,13 +242,16 @@ export default function App() {
       ...(runData.output || {}),
       ...(webhookData?.raw_output || {}),
     };
-    
+
     const addrObj = combinedOutput.address_lines || combinedOutput.address;
 
     setFinalData({
       status: runData.status,
-      sub_result: combinedOutput.sub_result, 
-      full_name: runData.full_name || [combinedOutput.first_name, combinedOutput.last_name].filter(Boolean).join(" ") || [runData.first_name, runData.last_name].filter(Boolean).join(" "),
+      sub_result: combinedOutput.sub_result,
+      full_name:
+        runData.full_name ||
+        [combinedOutput.first_name, combinedOutput.last_name].filter(Boolean).join(" ") ||
+        [runData.first_name, runData.last_name].filter(Boolean).join(" "),
       workflow_run_id: runData.workflow_run_id,
       webhook: webhookData || null,
       address: addrObj,
@@ -211,6 +261,7 @@ export default function App() {
       document_type: combinedOutput.document_type,
       date_expiry: combinedOutput.date_expiry || combinedOutput.date_of_expiry,
     });
+
     setView("final");
   }
 
@@ -218,15 +269,15 @@ export default function App() {
     e.preventDefault();
     setLoading(true);
     setErrorMsg("");
+
     const rawPhone = phone.trim();
-      if (!isValidPhone(rawPhone)) {
-        setErrorMsg("Phone number must be in format +1234567890");
-        setLoading(false);
-        return;
-      }
+    if (!isValidPhone(rawPhone)) {
+      setErrorMsg("Phone number must be in format +1234567890");
+      setLoading(false);
+      return;
+    }
 
     try {
-      
       const applicant = await fetchJSON(api(`/api/applicants`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -234,7 +285,7 @@ export default function App() {
           first_name: firstName,
           last_name: lastName,
           email,
-          phone_number: rawPhone 
+          phone_number: rawPhone,
         }),
       });
 
@@ -289,41 +340,38 @@ export default function App() {
 
   const computedFullName = finalData?.full_name || [firstName, lastName].filter(Boolean).join(" ");
   const breakdown = finalData?.webhook?.breakdown || {};
-  const visualAuth = breakdown?.visual_authenticity?.result ?? '-';
+  const visualAuth = breakdown?.visual_authenticity?.result ?? "-";
   const digitalTampering = breakdown?.visual_authenticity?.breakdown?.digital_tampering?.result;
   const securityFeatures = breakdown?.visual_authenticity?.breakdown?.security_features?.result;
 
   let addressStr = "—";
   if (finalData?.address) {
     if (typeof finalData.address === "object") {
-        const { town, state, postcode, country } = finalData.address;
-        addressStr = [town, state, postcode, country].filter(Boolean).join(", ");
+      const { town, state, postcode, country } = finalData.address;
+      addressStr = [town, state, postcode, country].filter(Boolean).join(", ");
     } else if (typeof finalData.address === "string") {
-        const parts = finalData.address.split(",").map(s => s.trim());
-        if (parts.length > 3) {
-            addressStr = parts.slice(1).join(", "); 
-        } else {
-            addressStr = finalData.address;
-        }
+      const parts = finalData.address.split(",").map((s) => s.trim());
+      if (parts.length > 3) {
+        addressStr = parts.slice(1).join(", ");
+      } else {
+        addressStr = finalData.address;
+      }
     }
   }
 
-  const runStatus = (finalData?.status || "").toLowerCase();
-const isApproved = runStatus === "approved";
+  const runStatus = String(finalData?.status || "").toLowerCase();
+  const isApproved = runStatus === "approved";
 
   return (
     <FullBg view={view} clickable={view === "home"} onActivate={() => setView("form")}>
       <div className="min-h-[100svh] w-full overflow-x-hidden">
         {(view === "form" || view === "workflow") && (
-          <OverlayCard
-            title={view === "form" ? "Applicant details" : "Verify your identity"}
-            onClose={closeAndCleanup}
-          >
+          <OverlayCard title={view === "form" ? "Applicant details" : "Verify your identity"} onClose={closeAndCleanup}>
             {errorMsg && (
-            <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-rose-800 font-bold">
-              ⚠ {errorMsg}
-            </div>
-          )}
+              <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-rose-800 font-bold">
+                ⚠ {errorMsg}
+              </div>
+            )}
 
             {view === "form" ? (
               <form onSubmit={handleSubmit} className="grid gap-6 w-full">
@@ -337,6 +385,7 @@ const isApproved = runStatus === "approved";
                       className="w-full rounded-xl border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:ring-black transition"
                     />
                   </label>
+
                   <label className="block">
                     <span className="block text-sm font-bold text-gray-700 mb-1">Last name</span>
                     <input
@@ -349,39 +398,39 @@ const isApproved = runStatus === "approved";
                 </div>
 
                 <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                    <label className="block">
+                  <label className="block">
                     <span className="block text-sm font-bold text-gray-700 mb-1">Email</span>
                     <input
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="w-full rounded-xl border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:ring-black transition"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full rounded-xl border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:ring-black transition"
                     />
-                    </label>
-                    
-                    <label className="block">
+                  </label>
+
+                  <label className="block">
                     <span className="block text-sm font-bold text-gray-700 mb-1">Phone Number</span>
                     <input
-                        type="tel"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        placeholder="+15551234567"
-                        required
-                        className="w-full rounded-xl border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:ring-black transition"
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="+15551234567"
+                      required
+                      className="w-full rounded-xl border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:ring-black transition"
                     />
-                    </label>
+                  </label>
                 </div>
 
                 <label className="block">
-                    <span className="block text-sm font-bold text-gray-700 mb-1">Are you a US Citizen?</span>
-                    <select
-                        value={isUsCitizen}
-                        onChange={(e) => setIsUsCitizen(e.target.value)}
-                        className="w-full rounded-xl border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:ring-black bg-white transition"
-                    >
-                        <option value="yes">Yes</option>
-                        <option value="no">No</option>
-                    </select>
+                  <span className="block text-sm font-bold text-gray-700 mb-1">Are you a US Citizen?</span>
+                  <select
+                    value={isUsCitizen}
+                    onChange={(e) => setIsUsCitizen(e.target.value)}
+                    className="w-full rounded-xl border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:ring-black bg-white transition"
+                  >
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                  </select>
                 </label>
 
                 <div className="mt-4">
@@ -410,12 +459,16 @@ const isApproved = runStatus === "approved";
               setView("home");
             }}
           >
-             <div className="flex justify-center mt-12 mb-8">
-                <svg className="animate-spin h-10 w-10 text-gray-900" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-             </div>
+            <div className="flex justify-center mt-12 mb-8">
+              <svg className="animate-spin h-10 w-10 text-gray-900" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+            </div>
           </WhiteScreen>
         )}
 
@@ -441,17 +494,16 @@ const isApproved = runStatus === "approved";
             title={
               isApproved
                 ? "You have successfully verified your identity!✅"
-                : "Verification requires manual review"
+                : runStatus === "review"
+                  ? "Verification requires manual review"
+                  : "Your identity verification was not successful"
             }
-
             subtitle={
               isApproved
                 ? "Let's proceed with the next step of your account opening."
                 : `Please call us at ${CONFIG.supportPhone} and reference ${CONFIG.referenceCode}.`
             }
-
             navbarUrl={isApproved ? CONFIG.navbars.success : CONFIG.navbars.failure}
-
             danger={
               !isApproved
                 ? runStatus === "review"
@@ -463,11 +515,12 @@ const isApproved = runStatus === "approved";
               closeAndCleanup();
               setView("home");
             }}
-
           >
             <div className="grid gap-3 w-full">
               <h3 className="text-xl font-bold text-gray-900 mb-2">Detailed Results</h3>
-              <InfoRow label="Verification Result" value={finalData.status} isBadge />
+
+              <InfoRow label="Verification Result" value={finalData.status} isBadge badgeMode="workflowStatus" />
+
               <InfoRow label="Sub-Result" value={finalData.sub_result} isBadge />
               <InfoRow label="Visual Authenticity" value={visualAuth} isBadge />
               <InfoRow label="Digital Tampering" value={digitalTampering} isBadge />
