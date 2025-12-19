@@ -8,6 +8,8 @@ const CONFIG = {
   referenceCode: "Onboarding Verification 05JX1-0WWE",
 };
 
+const DUMMY_PHONE_DISPLAY = "+1 800-328-3996";
+
 const WORKFLOW_ID = import.meta.env.VITE_WORKFLOW_ID || "";
 const API_ORIGIN = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
 const api = (path) => `${API_ORIGIN}${path}`;
@@ -19,17 +21,27 @@ async function fetchJSON(url, opts = {}) {
   return data;
 }
 
-// IMPORTANT: completion is based on MAIN status, not sub_result
 async function waitForWebhook(runId, { tries = 200, intervalMs = 2000 } = {}) {
-  const TERMINAL = ["approved", "declined", "review", "abandoned", "completed"];
+  const TERMINAL = ["approved", "declined", "review", "abandoned"];
 
   for (let i = 0; i < tries; i++) {
     try {
       const data = await fetchJSON(api(`/api/webhook_runs/${encodeURIComponent(runId)}`));
 
-      if (data && Object.keys(data.raw_output || {}).length > 0) {
-        const status = String(data.status || "").toLowerCase();
-        if (TERMINAL.includes(status)) return data;
+      const status = String(data?.status || "").toLowerCase();
+      const hasRaw = data && Object.keys(data.raw_output || {}).length > 0;
+
+      const hasBreakdown = Boolean(data?.breakdown?.visual_authenticity);
+
+
+      const hasResult = Boolean(data?.result || data?.raw_output?.sub_result || data?.raw_output?.result);
+
+      if (hasRaw && TERMINAL.includes(status)) {
+        if (status === "review") {
+          if (hasBreakdown || hasResult) return data;
+        } else {
+          return data;
+        }
       }
     } catch {
       // ignore transient errors
@@ -40,6 +52,7 @@ async function waitForWebhook(runId, { tries = 200, intervalMs = 2000 } = {}) {
 
   throw new Error("Timeout waiting for completion");
 }
+
 
 function OverlayCard({ title, subtitle, onClose, children }) {
   return (
@@ -61,7 +74,7 @@ function OverlayCard({ title, subtitle, onClose, children }) {
   );
 }
 
-function WhiteScreen({ title, subtitle, danger, onBack, onRetry, navbarUrl, children }) {
+function WhiteScreen({ title, subtitle, danger, onBack, navbarUrl, children }) {
   return (
     <div className="fixed inset-0 z-30 overflow-x-hidden overflow-y-auto bg-gray-50">
       {navbarUrl && <img src={navbarUrl} alt="Banner" className="w-full h-auto block shadow-sm" />}
@@ -85,23 +98,10 @@ function WhiteScreen({ title, subtitle, danger, onBack, onRetry, navbarUrl, chil
           >
             Back to home
           </button>
-
-          {onRetry && (
-            <button
-              onClick={onRetry}
-              className="rounded-xl border border-gray-200 bg-white px-6 py-3 font-bold text-gray-900 hover:bg-gray-50 transition-all"
-            >
-              Try again
-            </button>
-          )}
         </div>
       </div>
 
-      {children && (
-        <div className="mx-auto my-6 w-full max-w-3xl px-4 pb-20">
-          {children}
-        </div>
-      )}
+      {children && <div className="mx-auto my-6 w-full max-w-3xl px-4 pb-20">{children}</div>}
     </div>
   );
 }
@@ -121,13 +121,10 @@ function FullBg({ view, children, clickable = false, onActivate }) {
   );
 }
 
-// MAIN STATUS badge rules:
-// - approved = green check
-// - review = yellow warning
-// - anything else = red x
+
 function ResultBadge({ value, mode = "default" }) {
   const normalized = String(value || "").toLowerCase();
-  const label = value ? value.charAt(0).toUpperCase() + value.slice(1) : "—";
+  const label = value ? value.charAt(0).toUpperCase() + value.slice(1) : "N/A";
 
   if (mode === "workflowStatus") {
     if (normalized === "approved") {
@@ -166,7 +163,6 @@ function ResultBadge({ value, mode = "default" }) {
     );
   }
 
-  // Default behavior for other fields (sub_result, breakdown items, etc.)
   if (normalized === "clear" || normalized === "approved") {
     return (
       <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-sm">
@@ -208,7 +204,7 @@ function InfoRow({ label, value, isBadge, badgeMode }) {
     <div className="grid grid-cols-1 gap-1 rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:grid-cols-3 items-center w-full transition hover:border-gray-300">
       <div className="text-xs font-bold uppercase tracking-wider text-gray-500 whitespace-nowrap">{label}</div>
       <div className="sm:col-span-2 text-gray-900 font-medium break-all">
-        {isBadge ? <ResultBadge value={value} mode={badgeMode} /> : String(value ?? "—")}
+        {isBadge ? <ResultBadge value={value} mode={badgeMode} /> : String(value ?? "N/A")}
       </div>
     </div>
   );
@@ -219,7 +215,7 @@ export default function App() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
+  const [phone, setPhone] = useState(DUMMY_PHONE_DISPLAY);
   const [isUsCitizen, setIsUsCitizen] = useState("no");
 
   const [loading, setLoading] = useState(false);
@@ -228,51 +224,79 @@ export default function App() {
 
   const onfidoRef = useRef(null);
 
-  function isValidPhone(phone) {
-    return /^\+\d{9,12}$/.test(phone);
+  function normalizePhone(input) {
+    const raw = String(input || "").trim();
+    if (!raw) return "";
+    const digits = raw.replace(/\D/g, "");
+    if (!digits) return "";
+    return raw.startsWith("+") ? `+${digits}` : `+${digits}`;
+  }
+
+  function isValidPhoneE164(phoneE164) {
+    return /^\+\d{9,15}$/.test(phoneE164);
   }
 
   async function loadFinalData(id) {
-    const [runData, webhookData] = await Promise.all([
-      fetchJSON(api(`/api/workflow_runs/${encodeURIComponent(id)}`)),
-      fetchJSON(api(`/api/webhook_runs/${encodeURIComponent(id)}`)).catch(() => null),
-    ]);
+  const [runData, webhookData] = await Promise.all([
+    fetchJSON(api(`/api/workflow_runs/${encodeURIComponent(id)}`)),
+    fetchJSON(api(`/api/webhook_runs/${encodeURIComponent(id)}`)).catch(() => null),
+  ]);
 
-    const combinedOutput = {
-      ...(runData.output || {}),
-      ...(webhookData?.raw_output || {}),
-    };
+  const runOutput = runData?.output || {};
+  const merged = webhookData?.raw_output || {}; 
 
-    const addrObj = combinedOutput.address_lines || combinedOutput.address;
+  const breakdown =
+    webhookData?.breakdown ||
+    merged?.breakdown ||
+    runOutput?.breakdown ||
+    {};
 
-    setFinalData({
-      status: runData.status,
-      sub_result: combinedOutput.sub_result,
-      full_name:
-        runData.full_name ||
-        [combinedOutput.first_name, combinedOutput.last_name].filter(Boolean).join(" ") ||
-        [runData.first_name, runData.last_name].filter(Boolean).join(" "),
-      workflow_run_id: runData.workflow_run_id,
-      webhook: webhookData || null,
-      address: addrObj,
-      gender: combinedOutput.gender,
-      dob: combinedOutput.dob || combinedOutput.date_of_birth,
-      document_number: combinedOutput.document_number,
-      document_type: combinedOutput.document_type,
-      date_expiry: combinedOutput.date_expiry || combinedOutput.date_of_expiry,
-    });
+  const subResult =
+    runOutput?.sub_result ??
+    webhookData?.result ??
+    merged?.sub_result ??
+    merged?.result ??
+    null;
 
-    setView("final");
-  }
+  const addrObj =
+    merged?.address_lines ||
+    merged?.address ||
+    runOutput?.address_lines ||
+    runOutput?.address;
+
+  const first = merged?.first_name || runOutput?.first_name;
+  const last = merged?.last_name || runOutput?.last_name;
+
+  setFinalData({
+    status: runData.status,
+    sub_result: subResult,
+    full_name: runData.full_name || [first, last].filter(Boolean).join(" ") || "",
+    workflow_run_id: runData.workflow_run_id,
+
+    webhook: webhookData || null,
+    breakdown,
+
+    address: addrObj,
+    gender: merged?.gender || runOutput?.gender,
+    dob: merged?.date_of_birth || runOutput?.dob || runOutput?.date_of_birth,
+    document_number: merged?.document_number || runOutput?.document_number,
+    document_type: merged?.document_type || runOutput?.document_type,
+    date_expiry: merged?.date_of_expiry || runOutput?.date_expiry || runOutput?.date_of_expiry,
+  });
+
+  setView("final");
+}
+
+
 
   async function handleSubmit(e) {
     e.preventDefault();
     setLoading(true);
     setErrorMsg("");
 
-    const rawPhone = phone.trim();
-    if (!isValidPhone(rawPhone)) {
-      setErrorMsg("Phone number must be in format +1234567890");
+    const phoneE164 = normalizePhone(phone);
+    if (!isValidPhoneE164(phoneE164)) {
+      setErrorMsg("Phone number must be valid (example: +18003283996).");
       setLoading(false);
       return;
     }
@@ -285,7 +309,7 @@ export default function App() {
           first_name: firstName,
           last_name: lastName,
           email,
-          phone_number: rawPhone,
+          phone_number: phoneE164,
         }),
       });
 
@@ -334,21 +358,21 @@ export default function App() {
     setFirstName("");
     setLastName("");
     setEmail("");
-    setPhone("");
+    setPhone(DUMMY_PHONE_DISPLAY);
     setIsUsCitizen("no");
   }
 
   const computedFullName = finalData?.full_name || [firstName, lastName].filter(Boolean).join(" ");
-  const breakdown = finalData?.webhook?.breakdown || {};
-  const visualAuth = breakdown?.visual_authenticity?.result ?? "-";
-  const digitalTampering = breakdown?.visual_authenticity?.breakdown?.digital_tampering?.result;
-  const securityFeatures = breakdown?.visual_authenticity?.breakdown?.security_features?.result;
+  const breakdown = finalData?.breakdown || {};
+  const visualAuth = breakdown?.visual_authenticity?.result ?? "N/A";
+  const digitalTampering = breakdown?.visual_authenticity?.breakdown?.digital_tampering?.result ?? "N/A";
+  const securityFeatures = breakdown?.visual_authenticity?.breakdown?.security_features?.result ?? "N/A";
 
-  let addressStr = "—";
+  let addressStr = "N/A";
   if (finalData?.address) {
     if (typeof finalData.address === "object") {
       const { town, state, postcode, country } = finalData.address;
-      addressStr = [town, state, postcode, country].filter(Boolean).join(", ");
+      addressStr = [town, state, postcode, country].filter(Boolean).join(", ") || "N/A";
     } else if (typeof finalData.address === "string") {
       const parts = finalData.address.split(",").map((s) => s.trim());
       if (parts.length > 3) {
@@ -360,7 +384,51 @@ export default function App() {
   }
 
   const runStatus = String(finalData?.status || "").toLowerCase();
-  const isApproved = runStatus === "approved";
+
+  const statusCopy = {
+    approved: {
+      title: "You have successfully verified your identity!✅",
+      subtitle: "Let's proceed with the next step of your account opening.",
+      danger: undefined,
+      banner: CONFIG.navbars.success,
+    },
+
+    review: {
+      title: "Verification requires additional review",
+      subtitle: `Please call us at ${CONFIG.supportPhone} and reference ${CONFIG.referenceCode}.`,
+      danger: "Identity Verification will require additional review.",
+      banner: CONFIG.navbars.failure,
+    },
+
+    declined: {
+      title: "Verification was declined",
+      subtitle: `Please call us at ${CONFIG.supportPhone} and reference ${CONFIG.referenceCode}.`,
+      danger: "Your verification was declined.",
+      banner: CONFIG.navbars.failure,
+    },
+
+    rejected: {
+      title: "Verification was rejected",
+      subtitle: `Please call us at ${CONFIG.supportPhone} and reference ${CONFIG.referenceCode}.`,
+      danger: "Your verification was rejected.",
+      banner: CONFIG.navbars.failure,
+    },
+
+    abandoned: {
+      title: "Verification was not completed",
+      subtitle: `Please call us at ${CONFIG.supportPhone} and reference ${CONFIG.referenceCode}.`,
+      danger: "The verification was abandoned before completion.",
+      banner: CONFIG.navbars.failure,
+    },
+  };
+
+  const meta =
+    statusCopy[runStatus] || {
+      title: "Your identity verification was not successful",
+      subtitle: `Please call us at ${CONFIG.supportPhone} and reference ${CONFIG.referenceCode}.`,
+      danger: "Your identity verification was not successful.",
+      banner: CONFIG.navbars.failure,
+    };
 
   return (
     <FullBg view={view} clickable={view === "home"} onActivate={() => setView("form")}>
@@ -414,7 +482,7 @@ export default function App() {
                       type="tel"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
-                      placeholder="+15551234567"
+                      placeholder={DUMMY_PHONE_DISPLAY}
                       required
                       className="w-full rounded-xl border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:ring-black transition"
                     />
@@ -439,7 +507,7 @@ export default function App() {
                     disabled={loading}
                     className="w-full sm:w-auto rounded-xl bg-gray-900 px-8 py-4 font-extrabold text-white shadow-lg shadow-gray-900/20 hover:bg-black hover:-translate-y-0.5 transition-all disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
                   >
-                    {loading ? "Submitting…" : "Create & start workflow"}
+                    {loading ? "Submitting…" : "Step 2: Verify Your Identity..."}
                   </button>
                 </div>
               </form>
@@ -460,7 +528,12 @@ export default function App() {
             }}
           >
             <div className="flex justify-center mt-12 mb-8">
-              <svg className="animate-spin h-10 w-10 text-gray-900" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <svg
+                className="animate-spin h-10 w-10 text-gray-900"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path
                   className="opacity-75"
@@ -482,35 +555,15 @@ export default function App() {
               closeAndCleanup();
               setView("home");
             }}
-            onRetry={() => {
-              setView("form");
-              setErrorMsg("");
-            }}
           />
         )}
 
         {view === "final" && finalData && (
           <WhiteScreen
-            title={
-              isApproved
-                ? "You have successfully verified your identity!✅"
-                : runStatus === "review"
-                  ? "Verification requires manual review"
-                  : "Your identity verification was not successful"
-            }
-            subtitle={
-              isApproved
-                ? "Let's proceed with the next step of your account opening."
-                : `Please call us at ${CONFIG.supportPhone} and reference ${CONFIG.referenceCode}.`
-            }
-            navbarUrl={isApproved ? CONFIG.navbars.success : CONFIG.navbars.failure}
-            danger={
-              !isApproved
-                ? runStatus === "review"
-                  ? "Identity Verification will require additional review."
-                  : "Your identity verification was not successful."
-                : undefined
-            }
+            title={meta.title}
+            subtitle={meta.subtitle}
+            navbarUrl={meta.banner}
+            danger={meta.danger}
             onBack={() => {
               closeAndCleanup();
               setView("home");
@@ -529,7 +582,7 @@ export default function App() {
               <div className="my-6 border-t border-gray-100"></div>
 
               <h3 className="text-xl font-bold text-gray-900 mb-2">Personal Data</h3>
-              <InfoRow label="Full name" value={computedFullName || "—"} />
+              <InfoRow label="Full name" value={computedFullName || "N/A"} />
               <InfoRow label="Address" value={addressStr} />
               <InfoRow label="Gender" value={finalData.gender} />
               <InfoRow label="Date of birth" value={finalData.dob} />
