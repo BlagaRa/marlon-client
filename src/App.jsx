@@ -4,7 +4,7 @@ import { Onfido } from "onfido-sdk-ui";
 const CONFIG = {
   backgrounds: { home: "/bank2.png", form: "/bank2.png", workflow: "/bank2.png" },
   navbars: { success: "/results-banner.png", failure: "/results-banner.png" },
-  supportPhone: "1 (800) 999-0000",
+  supportPhone: "1(800) 999-0000",
   referenceCode: "Onboarding Verification 05JX1-0WWE",
 };
 
@@ -91,7 +91,7 @@ function WhiteScreen({ title, subtitle, danger, onBack, navbarUrl, children }) {
 
         {subtitle && <p className="mt-2 text-lg text-gray-600 break-words leading-relaxed">{subtitle}</p>}
 
-        <div className="mt-6 mb-18 flex gap-3 flex-wrap">
+        <div className="mt-6 mb-40 flex gap-3 flex-wrap">
           <button
             onClick={onBack}
             className="rounded-xl bg-gray-900 px-6 py-3 font-bold text-white shadow-lg shadow-gray-900/20 hover:bg-black transition-all hover:-translate-y-0.5"
