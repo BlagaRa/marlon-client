@@ -385,50 +385,21 @@ export default function App() {
 
   const runStatus = String(finalData?.status || "").toLowerCase();
 
-  const statusCopy = {
-    approved: {
-      title: "You have successfully verified your identity!✅",
-      subtitle: "Let's proceed with the next step of your account opening.",
-      danger: undefined,
-      banner: CONFIG.navbars.success,
-    },
+const approvedMeta = {
+  title: "You have successfully verified your identity!✅",
+  subtitle: "Let's proceed with the next step of your account opening.",
+  danger: undefined,
+  banner: CONFIG.navbars.success,
+};
 
-    review: {
-      title: "Verification requires additional review",
-      subtitle: `Please call us at ${CONFIG.supportPhone} and reference ${CONFIG.referenceCode}.`,
-      danger: "Identity Verification will require additional review.",
-      banner: CONFIG.navbars.failure,
-    },
+const nonApprovedMeta = {
+  title: "Verification requires additional review",
+  subtitle: `Please call us at ${CONFIG.supportPhone} and reference ${CONFIG.referenceCode}.`,
+  danger: "Identity Verification will require additional review.",
+  banner: CONFIG.navbars.failure,
+};
 
-    declined: {
-      title: "Verification was declined",
-      subtitle: `Please call us at ${CONFIG.supportPhone} and reference ${CONFIG.referenceCode}.`,
-      danger: "Your verification was declined.",
-      banner: CONFIG.navbars.failure,
-    },
-
-    rejected: {
-      title: "Verification was rejected",
-      subtitle: `Please call us at ${CONFIG.supportPhone} and reference ${CONFIG.referenceCode}.`,
-      danger: "Your verification was rejected.",
-      banner: CONFIG.navbars.failure,
-    },
-
-    abandoned: {
-      title: "Verification was not completed",
-      subtitle: `Please call us at ${CONFIG.supportPhone} and reference ${CONFIG.referenceCode}.`,
-      danger: "The verification was abandoned before completion.",
-      banner: CONFIG.navbars.failure,
-    },
-  };
-
-  const meta =
-    statusCopy[runStatus] || {
-      title: "Your identity verification was not successful",
-      subtitle: `Please call us at ${CONFIG.supportPhone} and reference ${CONFIG.referenceCode}.`,
-      danger: "Your identity verification was not successful.",
-      banner: CONFIG.navbars.failure,
-    };
+const meta = runStatus === "approved" ? approvedMeta : nonApprovedMeta;
 
   return (
     <FullBg view={view} clickable={view === "home"} onActivate={() => setView("form")}>
