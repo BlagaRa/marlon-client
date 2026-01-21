@@ -240,9 +240,10 @@ export default function App() {
    * Robustly extracts verification results from the breakdown object.
    * Handles multiple possible data structures and provides fallbacks.
    * @param {Object} breakdown - The breakdown object from Onfido
+   * @param {Object} webhookData - Optional webhook data to check document_breakdown
    * @returns {Object} Object with visual_authenticity, digital_tampering, and security_features
    */
-  function extractVerificationResults(breakdown) {
+  function extractVerificationResults(breakdown, webhookData = null) {
     if (!breakdown || typeof breakdown !== "object") {
       return {
         visual_authenticity: null,
@@ -257,23 +258,107 @@ export default function App() {
       breakdown?.visual_authenticity ??
       null;
 
-    // Digital Tampering: can be at breakdown.digital_tampering.result (top-level)
-    // OR nested under visual_authenticity.breakdown.digital_tampering.result (fallback)
-    const digitalTampering =
+    // Digital Tampering: Check multiple possible locations
+    // 1. Top-level: breakdown.digital_tampering.result
+    // 2. Nested: breakdown.visual_authenticity.breakdown.digital_tampering.result
+    // 3. In document_breakdown if available
+    // 4. Check all breakdowns in webhookData.breakdowns
+    let digitalTampering =
       breakdown?.digital_tampering?.result ??
       breakdown?.digital_tampering ??
       breakdown?.visual_authenticity?.breakdown?.digital_tampering?.result ??
       breakdown?.visual_authenticity?.breakdown?.digital_tampering ??
       null;
 
-    // Security Features: can be at breakdown.security_features.result (top-level)
-    // OR nested under visual_authenticity.breakdown.security_features.result (fallback)
-    const securityFeatures =
+    // Check document_breakdown if available
+    // Structure: document_breakdown.visual_authenticity.breakdown.digital_tampering.result
+    if (!digitalTampering && webhookData?.document_breakdown) {
+      // Check top-level
+      digitalTampering =
+        webhookData.document_breakdown?.digital_tampering?.result ??
+        webhookData.document_breakdown?.digital_tampering ??
+        null;
+      // Check nested in visual_authenticity.breakdown
+      if (!digitalTampering && webhookData.document_breakdown?.visual_authenticity?.breakdown?.digital_tampering) {
+        digitalTampering =
+          webhookData.document_breakdown.visual_authenticity.breakdown.digital_tampering?.result ??
+          webhookData.document_breakdown.visual_authenticity.breakdown.digital_tampering ??
+          null;
+      }
+    }
+
+    // Check all breakdowns in breakdowns object
+    // The structure is: breakdowns[taskId].visual_authenticity.breakdown.digital_tampering.result
+    if (!digitalTampering && webhookData?.breakdowns) {
+      for (const taskId in webhookData.breakdowns) {
+        const taskBreakdown = webhookData.breakdowns[taskId];
+        // Check top-level first
+        if (taskBreakdown?.digital_tampering) {
+          digitalTampering =
+            taskBreakdown.digital_tampering?.result ??
+            taskBreakdown.digital_tampering ??
+            null;
+          if (digitalTampering) break;
+        }
+        // Check nested in visual_authenticity.breakdown
+        if (!digitalTampering && taskBreakdown?.visual_authenticity?.breakdown?.digital_tampering) {
+          digitalTampering =
+            taskBreakdown.visual_authenticity.breakdown.digital_tampering?.result ??
+            taskBreakdown.visual_authenticity.breakdown.digital_tampering ??
+            null;
+          if (digitalTampering) break;
+        }
+      }
+    }
+
+    // Security Features: Check multiple possible locations
+    let securityFeatures =
       breakdown?.security_features?.result ??
       breakdown?.security_features ??
       breakdown?.visual_authenticity?.breakdown?.security_features?.result ??
       breakdown?.visual_authenticity?.breakdown?.security_features ??
       null;
+
+    // Check document_breakdown if available
+    // Structure: document_breakdown.visual_authenticity.breakdown.security_features.result
+    if (!securityFeatures && webhookData?.document_breakdown) {
+      // Check top-level
+      securityFeatures =
+        webhookData.document_breakdown?.security_features?.result ??
+        webhookData.document_breakdown?.security_features ??
+        null;
+      // Check nested in visual_authenticity.breakdown
+      if (!securityFeatures && webhookData.document_breakdown?.visual_authenticity?.breakdown?.security_features) {
+        securityFeatures =
+          webhookData.document_breakdown.visual_authenticity.breakdown.security_features?.result ??
+          webhookData.document_breakdown.visual_authenticity.breakdown.security_features ??
+          null;
+      }
+    }
+
+    // Check all breakdowns in breakdowns object
+    // The structure is: breakdowns[taskId].visual_authenticity.breakdown.security_features.result
+    if (!securityFeatures && webhookData?.breakdowns) {
+      for (const taskId in webhookData.breakdowns) {
+        const taskBreakdown = webhookData.breakdowns[taskId];
+        // Check top-level first
+        if (taskBreakdown?.security_features) {
+          securityFeatures =
+            taskBreakdown.security_features?.result ??
+            taskBreakdown.security_features ??
+            null;
+          if (securityFeatures) break;
+        }
+        // Check nested in visual_authenticity.breakdown
+        if (!securityFeatures && taskBreakdown?.visual_authenticity?.breakdown?.security_features) {
+          securityFeatures =
+            taskBreakdown.visual_authenticity.breakdown.security_features?.result ??
+            taskBreakdown.visual_authenticity.breakdown.security_features ??
+            null;
+          if (securityFeatures) break;
+        }
+      }
+    }
 
     return {
       visual_authenticity: visualAuth,
@@ -305,9 +390,22 @@ export default function App() {
     // Debug: Log breakdown structure
     console.log("Raw breakdown object:", breakdown);
     console.log("Breakdown keys:", breakdown ? Object.keys(breakdown) : "No breakdown");
+    console.log("webhookData.document_breakdown:", webhookData?.document_breakdown);
+    console.log("webhookData.breakdowns:", webhookData?.breakdowns);
+    
+    // Log full structure for digital_tampering and security_features
+    if (breakdown) {
+      console.log("Checking for digital_tampering in breakdown:", breakdown.digital_tampering);
+      console.log("Checking for security_features in breakdown:", breakdown.security_features);
+      if (breakdown.visual_authenticity?.breakdown) {
+        console.log("visual_authenticity.breakdown keys:", Object.keys(breakdown.visual_authenticity.breakdown));
+        console.log("visual_authenticity.breakdown.digital_tampering:", breakdown.visual_authenticity.breakdown.digital_tampering);
+        console.log("visual_authenticity.breakdown.security_features:", breakdown.visual_authenticity.breakdown.security_features);
+      }
+    }
 
     // Extract verification results using the robust extraction function
-    const verificationResults = extractVerificationResults(breakdown);
+    const verificationResults = extractVerificationResults(breakdown, webhookData);
 
     // Debug: Log extracted verification results
     console.log("Extracted verification results:", verificationResults);
@@ -432,7 +530,7 @@ export default function App() {
   const breakdown = finalData?.breakdown || {};
   
   // Use extracted verification results if available, otherwise extract on the fly
-  const verificationResults = finalData?.verificationResults || extractVerificationResults(breakdown);
+  const verificationResults = finalData?.verificationResults || extractVerificationResults(breakdown, finalData?.webhook);
   
   // Extract values with proper fallback to "N/A"
   const visualAuth = verificationResults.visual_authenticity ?? "N/A";
