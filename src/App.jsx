@@ -1,13 +1,14 @@
-// App.jsx
 import { useRef, useState } from "react";
 import { Onfido } from "onfido-sdk-ui";
 
 const CONFIG = {
   backgrounds: { home: "/bank2.png", form: "/bank2.png", workflow: "/bank2.png" },
-  navbars: { success: "/success-banner.png", failure: "/faile-banner.png" },
-  supportPhone: "1 (800) 999-0000",
-  referenceCode: "Onboarding Verification 05jx1-0fmt",
+  navbars: { success: "/results-banner.png", failure: "/results-banner.png" },
+  supportPhone: "1(800)999-0000",
+  referenceCode: "Onboarding Verification 05JX1-0WWE",
 };
+
+const DUMMY_PHONE_DISPLAY = "+1 800-328-3996";
 
 const WORKFLOW_ID = import.meta.env.VITE_WORKFLOW_ID || "";
 const API_ORIGIN = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
@@ -20,101 +21,87 @@ async function fetchJSON(url, opts = {}) {
   return data;
 }
 
-async function waitForWebhook(runId, { tries = 100, intervalMs = 3000 } = {}) {
+async function waitForWebhook(runId, { tries = 200, intervalMs = 2000 } = {}) {
+  const TERMINAL = ["approved", "declined", "review", "abandoned"];
+
   for (let i = 0; i < tries; i++) {
     try {
       const data = await fetchJSON(api(`/api/webhook_runs/${encodeURIComponent(runId)}`));
-      return data;
-    } catch {}
+
+      const status = String(data?.status || "").toLowerCase();
+      const hasRaw = data && Object.keys(data.raw_output || {}).length > 0;
+
+      const hasBreakdown = Boolean(data?.breakdown?.visual_authenticity);
+
+
+      const hasResult = Boolean(data?.result || data?.raw_output?.sub_result || data?.raw_output?.result);
+
+      if (hasRaw && TERMINAL.includes(status)) {
+        if (status === "review") {
+          if (hasBreakdown || hasResult) return data;
+        } else {
+          return data;
+        }
+      }
+    } catch {
+      // ignore transient errors
+    }
+
     await new Promise((r) => setTimeout(r, intervalMs));
   }
-  throw new Error("Timeout waiting for webhook");
+
+  throw new Error("Timeout waiting for completion");
 }
+
 
 function OverlayCard({ title, subtitle, onClose, children }) {
   return (
-    <div className="fixed inset-0 z-40 grid place-items-center bg-black/30 backdrop-blur-sm p-4">
-      <div className="w-full max-w-2xl max-h-[92svh] overflow-y-auto rounded-2xl border border-black/10 bg-white shadow-2xl">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-black/10">
-          <h2 className="m-0 text-2xl font-extrabold text-gray-900">{title}</h2>
+    <div className="fixed inset-0 z-40 grid place-items-center bg-black/40 backdrop-blur-sm p-4 overflow-x-hidden">
+      <div className="w-full max-w-2xl max-h-[98svh] h-fit overflow-y-auto rounded-3xl border border-white/40 bg-white/95 backdrop-blur-xl shadow-2xl ring-1 ring-black/5">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-black/5">
+          <h2 className="m-0 text-2xl font-extrabold text-gray-900 tracking-tight">{title}</h2>
           <button
             onClick={onClose}
-            className="inline-flex items-center gap-2 rounded-xl border border-black/10 bg-white px-3 py-2 text-sm font-bold shadow-sm hover:bg-gray-50 cursor-pointer"
-            aria-label="Close"
+            className="inline-flex items-center gap-2 rounded-xl border border-transparent bg-gray-100 px-3 py-2 text-sm font-bold text-gray-600 transition hover:bg-gray-200 cursor-pointer"
           >
             Close
           </button>
         </div>
-        {subtitle && <p className="px-6 pt-4 text-gray-600">{subtitle}</p>}
-        <div className="px-6 pb-6 pt-4">{children}</div>
+        {subtitle && <p className="px-6 pt-4 text-gray-600 font-medium">{subtitle}</p>}
+        <div className="px-6 pb-6 pt-6">{children}</div>
       </div>
     </div>
   );
 }
 
-function WhiteScreen({ title, subtitle, ok, danger, onBack, onRetry, navbarUrl, children }) {
+function WhiteScreen({ title, subtitle, danger, onBack, navbarUrl, children }) {
   return (
-    <div className="fixed inset-0 z-30 overflow-auto bg-white">
-      {navbarUrl && (
-        <div
-          className="h-24 w-full bg-cover bg-center"
-          style={{ backgroundImage: `url(${navbarUrl})`
-         }}
-          aria-hidden="true"
-        />
-        /*
-        <div
-          className="w-full"
-          style={{
-            height: "110px",            // adjust until your banner top is fully visible
-            backgroundImage: `url(${navbarUrl})`,
-            backgroundSize: "contain",  // no cropping, full banner is visible
-            backgroundRepeat: "no-repeat",
-            backgroundPosition: "top center",
-            paddingTop: "env(safe-area-inset-top)" // fixes notch cutting the top on iPhones
-          }}
-          aria-hidden="true"
-        />
+    <div className="fixed inset-0 z-30 overflow-x-hidden overflow-y-auto bg-gray-50">
+      {navbarUrl && <img src={navbarUrl} alt="Banner" className="w-full h-auto block shadow-sm" />}
 
-        */
-      )}
-      <div className="mx-auto max-w-xl px-6 py-6">
-        <h1 className="text-2xl font-extrabold text-gray-900">{title}</h1>
-        {subtitle && <p className="mt-2 text-gray-600">{subtitle}</p>}
-        {ok && (
-          <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-emerald-800">
-            ✓ Verification submitted. You can close this window.
-          </div>
-        )}
+      <div className="mx-auto max-w-xl px-4 py-8 w-full">
+        <h1 className="text-3xl font-extrabold text-gray-900 break-words tracking-tight">{title}</h1>
+
         {danger && (
-          <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-rose-800">
-            ⚠ {danger}
+          <div className="mt-4 mb-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-800 font-bold break-words shadow-sm flex items-start gap-2">
+            <span>⚠</span>
+            {danger}
           </div>
         )}
-        <div className="mt-4 flex gap-2">
+
+        {subtitle && <p className="mt-2 text-lg text-gray-600 break-words leading-relaxed">{subtitle}</p>}
+
+        <div className="mt-6 mb-40 flex gap-3 flex-wrap">
           <button
             onClick={onBack}
-            className="rounded-xl border border-black/10 bg-black px-4 py-2 font-bold text-white hover:opacity-95"
+            className="rounded-xl bg-gray-900 px-6 py-3 font-bold text-white shadow-lg shadow-gray-900/20 hover:bg-black transition-all hover:-translate-y-0.5"
           >
             Back to home
           </button>
-          {danger && (
-            <button
-              onClick={onRetry}
-              className="rounded-xl border border-black/10 bg-white px-4 py-2 font-bold hover:bg-gray-50"
-            >
-              Try again
-            </button>
-          )}
         </div>
       </div>
 
-      {/* Summary inside the overlay */}
-      {children && (
-        <div className="mx-auto my-10 w-full max-w-3xl px-4">
-          {children}
-        </div>
-      )}
+      {children && <div className="mx-auto my-6 w-full max-w-3xl px-4 pb-20">{children}</div>}
     </div>
   );
 }
@@ -125,36 +112,111 @@ function FullBg({ view, children, clickable = false, onActivate }) {
   if (!wantsBg) return <>{children}</>;
   return (
     <div
-      className={"min-h-[100svh] bg-cover bg-center bg-no-repeat " + (clickable ? "cursor-pointer" : "")}
+      className="min-h-[100svh] w-full bg-cover bg-center bg-no-repeat cursor-pointer overflow-x-hidden transition-all duration-700"
       style={{ backgroundImage: `url(${bg})` }}
       onClick={clickable ? onActivate : undefined}
-      role={clickable ? "button" : undefined}
-      tabIndex={clickable ? 0 : undefined}
     >
       {children}
     </div>
   );
 }
 
-function InfoRow({ label, value }) {
+
+function ResultBadge({ value, mode = "default" }) {
+  const normalized = String(value || "").toLowerCase();
+  const label = value ? value.charAt(0).toUpperCase() + value.slice(1) : "N/A";
+
+  if (mode === "workflowStatus") {
+    if (normalized === "approved") {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-sm">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+          {label}
+        </span>
+      );
+    }
+
+    if (normalized === "review") {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold bg-amber-100 text-amber-800 border border-amber-200 shadow-sm">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+            />
+          </svg>
+          {label}
+        </span>
+      );
+    }
+
+    return (
+      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold bg-rose-100 text-rose-800 border border-rose-200 shadow-sm">
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+        {label}
+      </span>
+    );
+  }
+
+  if (normalized === "clear" || normalized === "approved") {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-sm">
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+        {label}
+      </span>
+    );
+  } else if (["review", "consider", "suspected"].includes(normalized)) {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold bg-amber-100 text-amber-800 border border-amber-200 shadow-sm">
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+          />
+        </svg>
+        {label}
+      </span>
+    );
+  } else if (["declined", "rejected", "abandoned"].includes(normalized)) {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold bg-rose-100 text-rose-800 border border-rose-200 shadow-sm">
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+        {label}
+      </span>
+    );
+  }
+
+  return <span className="text-gray-400 font-normal">{label}</span>;
+}
+
+function InfoRow({ label, value, isBadge, badgeMode }) {
   return (
-    <div className="grid grid-cols-1 gap-1 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:grid-cols-3">
-      <div className="text-sm font-semibold uppercase tracking-wide text-gray-500">{label}</div>
-      <div className="sm:col-span-2 text-gray-900 break-words">{String(value ?? "—")}</div>
+    <div className="grid grid-cols-1 gap-1 rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:grid-cols-3 items-center w-full transition hover:border-gray-300">
+      <div className="text-xs font-bold uppercase tracking-wider text-gray-500 whitespace-nowrap">{label}</div>
+      <div className="sm:col-span-2 text-gray-900 font-medium break-all">
+        {isBadge ? <ResultBadge value={value} mode={badgeMode} /> : String(value ?? "N/A")}
+      </div>
     </div>
   );
 }
 
 export default function App() {
-  const [view, setView] = useState("home"); 
+  const [view, setView] = useState("home");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
-  const [country, setCountry] = useState("USA"); // ISO3
-  const [town, setTown] = useState("");
-  const [address, setAddress] = useState("");
-  const [state, setState] = useState("");
-  const [postcode, setPostcode] = useState(""); // optional
+  const [phone, setPhone] = useState(DUMMY_PHONE_DISPLAY);
+  const [isUsCitizen, setIsUsCitizen] = useState("no");
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -162,47 +224,147 @@ export default function App() {
 
   const onfidoRef = useRef(null);
 
-  const isUSA = (country || "").toUpperCase() === "USA";
+  function normalizePhone(input) {
+    const raw = String(input || "").trim();
+    if (!raw) return "";
+    const digits = raw.replace(/\D/g, "");
+    if (!digits) return "";
+    return raw.startsWith("+") ? `+${digits}` : `+${digits}`;
+  }
+
+  function isValidPhoneE164(phoneE164) {
+    return /^\+\d{9,15}$/.test(phoneE164);
+  }
+
+  /**
+   * Robustly extracts verification results from the breakdown object.
+   * Handles multiple possible data structures and provides fallbacks.
+   * @param {Object} breakdown - The breakdown object from Onfido
+   * @returns {Object} Object with visual_authenticity, digital_tampering, and security_features
+   */
+  function extractVerificationResults(breakdown) {
+    if (!breakdown || typeof breakdown !== "object") {
+      return {
+        visual_authenticity: null,
+        digital_tampering: null,
+        security_features: null,
+      };
+    }
+
+    // Visual Authenticity: can be at breakdown.visual_authenticity.result
+    const visualAuth =
+      breakdown?.visual_authenticity?.result ??
+      breakdown?.visual_authenticity ??
+      null;
+
+    // Digital Tampering: can be at breakdown.digital_tampering.result (top-level)
+    // OR nested under visual_authenticity.breakdown.digital_tampering.result (fallback)
+    const digitalTampering =
+      breakdown?.digital_tampering?.result ??
+      breakdown?.digital_tampering ??
+      breakdown?.visual_authenticity?.breakdown?.digital_tampering?.result ??
+      breakdown?.visual_authenticity?.breakdown?.digital_tampering ??
+      null;
+
+    // Security Features: can be at breakdown.security_features.result (top-level)
+    // OR nested under visual_authenticity.breakdown.security_features.result (fallback)
+    const securityFeatures =
+      breakdown?.security_features?.result ??
+      breakdown?.security_features ??
+      breakdown?.visual_authenticity?.breakdown?.security_features?.result ??
+      breakdown?.visual_authenticity?.breakdown?.security_features ??
+      null;
+
+    return {
+      visual_authenticity: visualAuth,
+      digital_tampering: digitalTampering,
+      security_features: securityFeatures,
+    };
+  }
 
   async function loadFinalData(id) {
     const [runData, webhookData] = await Promise.all([
       fetchJSON(api(`/api/workflow_runs/${encodeURIComponent(id)}`)),
       fetchJSON(api(`/api/webhook_runs/${encodeURIComponent(id)}`)).catch(() => null),
     ]);
+
+    // Debug: Log raw webhook data structure
+    console.log("=== VERIFICATION DATA DEBUG ===");
+    console.log("Raw webhookData:", webhookData);
+    console.log("Raw runData.output:", runData?.output);
+
+    const runOutput = runData?.output || {};
+    const merged = webhookData?.raw_output || {};
+
+    const breakdown =
+      webhookData?.breakdown ||
+      merged?.breakdown ||
+      runOutput?.breakdown ||
+      {};
+
+    // Debug: Log breakdown structure
+    console.log("Raw breakdown object:", breakdown);
+    console.log("Breakdown keys:", breakdown ? Object.keys(breakdown) : "No breakdown");
+
+    // Extract verification results using the robust extraction function
+    const verificationResults = extractVerificationResults(breakdown);
+
+    // Debug: Log extracted verification results
+    console.log("Extracted verification results:", verificationResults);
+    console.log("Visual Authenticity:", verificationResults.visual_authenticity);
+    console.log("Digital Tampering:", verificationResults.digital_tampering);
+    console.log("Security Features:", verificationResults.security_features);
+    console.log("=== END DEBUG ===");
+
+    const subResult =
+      runOutput?.sub_result ??
+      webhookData?.result ??
+      merged?.sub_result ??
+      merged?.result ??
+      null;
+
+    const addrObj =
+      merged?.address_lines ||
+      merged?.address ||
+      runOutput?.address_lines ||
+      runOutput?.address;
+
+    const first = merged?.first_name || runOutput?.first_name;
+    const last = merged?.last_name || runOutput?.last_name;
+
     setFinalData({
       status: runData.status,
-      full_name:
-        runData.full_name ||
-        [runData.first_name, runData.last_name].filter(Boolean).join(" "),
-      address_formatted:
-        runData.address_formatted ??
-        (typeof runData.address === "string" ? runData.address : null),
-      gender: runData.gender ?? null,
-      dob: runData.dob ?? null,
-      document_type: runData.document_type ?? null,
-      document_number: runData.document_number ?? null,
-      date_expiry: runData.date_expiry ?? null,
+      sub_result: subResult,
+      full_name: runData.full_name || [first, last].filter(Boolean).join(" ") || "",
       workflow_run_id: runData.workflow_run_id,
-      dashboard_url: runData.dashboard_url,
+
       webhook: webhookData || null,
+      breakdown,
+      verificationResults, // Store extracted results for use in render
+
+      address: addrObj,
+      gender: merged?.gender || runOutput?.gender,
+      dob: merged?.date_of_birth || runOutput?.dob || runOutput?.date_of_birth,
+      document_number: merged?.document_number || runOutput?.document_number,
+      document_type: merged?.document_type || runOutput?.document_type,
+      date_expiry: merged?.date_of_expiry || runOutput?.date_expiry || runOutput?.date_of_expiry,
     });
+
     setView("final");
   }
+
+
 
   async function handleSubmit(e) {
     e.preventDefault();
     setLoading(true);
-    setErrorMsg(""); // banner text
+    setErrorMsg("");
 
-    const ctry = (country || "").toUpperCase().trim();
-    const usState = (state || "").toUpperCase().trim();
-    if (ctry === "USA") {
-      if (!/^[A-Z]{2}$/.test(usState)) {
-        setLoading(false);
-        setErrorMsg("State is required for US addresses (use two-letter USPS code, e.g., CA, NY).");
-        setView("error");
-        return;
-      }
+    const phoneE164 = normalizePhone(phone);
+    if (!isValidPhoneE164(phoneE164)) {
+      setErrorMsg("Phone number must be valid (example: +18003283996).");
+      setLoading(false);
+      return;
     }
 
     try {
@@ -213,11 +375,7 @@ export default function App() {
           first_name: firstName,
           last_name: lastName,
           email,
-          country: ctry,
-          town,
-          address,
-          state: ctry === "USA" ? usState : state, 
-          postcode,
+          phone_number: phoneE164,
         }),
       });
 
@@ -263,129 +421,150 @@ export default function App() {
     setView("home");
     setErrorMsg("");
     setFinalData(null);
+    setFirstName("");
+    setLastName("");
+    setEmail("");
+    setPhone(DUMMY_PHONE_DISPLAY);
+    setIsUsCitizen("no");
   }
 
-  const isApproved = (finalData?.status || "").toLowerCase() === "approved";
-  const computedFullName =
-    finalData?.full_name || [firstName, lastName].filter(Boolean).join(" ");
+  const computedFullName = finalData?.full_name || [firstName, lastName].filter(Boolean).join(" ");
+  const breakdown = finalData?.breakdown || {};
+  
+  // Use extracted verification results if available, otherwise extract on the fly
+  const verificationResults = finalData?.verificationResults || extractVerificationResults(breakdown);
+  
+  // Extract values with proper fallback to "N/A"
+  const visualAuth = verificationResults.visual_authenticity ?? "N/A";
+  const digitalTampering = verificationResults.digital_tampering ?? "N/A";
+  const securityFeatures = verificationResults.security_features ?? "N/A";
 
-  const errorReason =
-    finalData?.webhook?.raw_payload?.payload?.resource?.error?.message ||
-    finalData?.webhook?.payload?.resource?.error?.message ||
-    (!isApproved ? "Verification requires manual review." : undefined);
+  // Debug: Log final computed values before display
+  if (finalData) {
+    console.log("=== FINAL DISPLAY VALUES ===");
+    console.log("Visual Authenticity (display):", visualAuth);
+    console.log("Digital Tampering (display):", digitalTampering);
+    console.log("Security Features (display):", securityFeatures);
+    console.log("=== END DISPLAY DEBUG ===");
+  }
+
+  let addressStr = "N/A";
+  if (finalData?.address) {
+    if (typeof finalData.address === "object") {
+      const { town, state, postcode, country } = finalData.address;
+      addressStr = [town, state, postcode, country].filter(Boolean).join(", ") || "N/A";
+    } else if (typeof finalData.address === "string") {
+      const parts = finalData.address.split(",").map((s) => s.trim());
+      if (parts.length > 3) {
+        addressStr = parts.slice(1).join(", ");
+      } else {
+        addressStr = finalData.address;
+      }
+    }
+  }
+
+  const runStatus = String(finalData?.status || "").toLowerCase();
+
+const approvedMeta = {
+  title: "You have successfully verified your identity!✅",
+  subtitle: "Let's proceed with the next step of your account opening.",
+  danger: undefined,
+  banner: CONFIG.navbars.success,
+};
+
+const nonApprovedMeta = {
+  title: "Verification requires additional review",
+  subtitle: `Please call us at ${CONFIG.supportPhone} and reference ${CONFIG.referenceCode}.`,
+  danger: "Identity Verification will require additional review.",
+  banner: CONFIG.navbars.failure,
+};
+
+const meta = runStatus === "approved" ? approvedMeta : nonApprovedMeta;
+
 
   return (
     <FullBg view={view} clickable={view === "home"} onActivate={() => setView("form")}>
-      <div className="min-h-[100svh]">
+      <div className="min-h-[100svh] w-full overflow-x-hidden">
         {(view === "form" || view === "workflow") && (
-          <OverlayCard
-            title={view === "form" ? "Applicant details" : "Verify your identity"}
-            onClose={closeAndCleanup}
-          >
+          <OverlayCard title={view === "form" ? "Applicant details" : "Verify your identity"} onClose={closeAndCleanup}>
+            {errorMsg && (
+              <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-rose-800 font-bold">
+                ⚠ {errorMsg}
+              </div>
+            )}
+
             {view === "form" ? (
-              <form onSubmit={handleSubmit} className="grid gap-4">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <label className="font-bold">
-                    First name
+              <form onSubmit={handleSubmit} className="grid gap-6 w-full">
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="block text-sm font-bold text-gray-700 mb-1">First name</span>
                     <input
                       value={firstName}
                       onChange={(e) => setFirstName(e.target.value)}
                       required
-                      className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:outline-none"
+                      className="w-full rounded-xl border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:ring-black transition"
                     />
                   </label>
-                  <label className="font-bold">
-                    Last name
+
+                  <label className="block">
+                    <span className="block text-sm font-bold text-gray-700 mb-1">Last name</span>
                     <input
                       value={lastName}
                       onChange={(e) => setLastName(e.target.value)}
                       required
-                      className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:outline-none"
+                      className="w-full rounded-xl border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:ring-black transition"
                     />
                   </label>
                 </div>
 
-                <label className="font-bold">
-                  Email
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:outline-none"
-                  />
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="block text-sm font-bold text-gray-700 mb-1">Email</span>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full rounded-xl border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:ring-black transition"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="block text-sm font-bold text-gray-700 mb-1">Phone Number</span>
+                    <input
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder={DUMMY_PHONE_DISPLAY}
+                      required
+                      className="w-full rounded-xl border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:ring-black transition"
+                    />
+                  </label>
+                </div>
+
+                <label className="block">
+                  <span className="block text-sm font-bold text-gray-700 mb-1">Are you a US Citizen?</span>
+                  <select
+                    value={isUsCitizen}
+                    onChange={(e) => setIsUsCitizen(e.target.value)}
+                    className="w-full rounded-xl border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:ring-black bg-white transition"
+                  >
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                  </select>
                 </label>
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  <label className="font-bold">
-                    Country (ISO3)
-                    <input
-                      value={country}
-                      onChange={(e) => setCountry(e.target.value.toUpperCase())}
-                      placeholder="ROU"
-                      maxLength={3}
-                      required
-                      className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:outline-none"
-                    />
-                  </label>
-                  <label className="font-bold">
-                    City (Town)
-                    <input
-                      value={town}
-                      onChange={(e) => setTown(e.target.value)}
-                      required
-                      className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:outline-none"
-                    />
-                  </label>
-                  <label className="font-bold">
-                    Zip (optional)
-                    <input
-                      value={postcode}
-                      onChange={(e) => setPostcode(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:outline-none"
-                    />
-                  </label>
-                </div>
-
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  <label className="font-bold sm:col-span-2">
-                    Address
-                    <input
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                      placeholder="Ex: Street 123, Building X, Apt 10"
-                      required
-                      className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:outline-none"
-                    />
-                  </label>
-
-                  {isUSA && (
-                  <label className="font-bold">
-                    State (USPS, required)
-                    <input
-                      value={state}
-                      onChange={(e) => setState(e.target.value.toUpperCase())}
-                      placeholder="CA, NY, TX..."
-                      maxLength={2}
-                      required
-                      className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 text-base shadow-sm focus:border-black focus:outline-none"
-                    />
-                  </label>
-                )}
-
-                </div>
-
-                <div className="mt-2 flex gap-3">
+                <div className="mt-4">
                   <button
                     type="submit"
                     disabled={loading}
-                    className="min-w-[220px] rounded-xl border border-black/10 bg-black px-5 py-3 font-extrabold text-white shadow-sm hover:opacity-95 disabled:opacity-60 cursor-pointer"
+                    className="w-full sm:w-auto rounded-xl bg-gray-900 px-8 py-4 font-extrabold text-white shadow-lg shadow-gray-900/20 hover:bg-black hover:-translate-y-0.5 transition-all disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
                   >
-                    {loading ? "Submitting…" : "Create & start workflow"}
+                    {loading ? "Submitting…" : "Step 2: Verify Your Identity..."}
                   </button>
                 </div>
               </form>
             ) : (
-              <div id="onfido-mount" className="min-h-[480px]" />
+              <div id="onfido-mount" className="min-h-[600px] w-full" />
             )}
           </OverlayCard>
         )}
@@ -394,10 +573,28 @@ export default function App() {
           <WhiteScreen
             title="Thank you for uploading"
             subtitle="We are currently verifying your information. This may take a few minutes."
-            ok
             navbarUrl={CONFIG.navbars.success}
-            onBack={closeAndCleanup}
-          />
+            onBack={() => {
+              closeAndCleanup();
+              setView("home");
+            }}
+          >
+            <div className="flex justify-center mt-12 mb-8">
+              <svg
+                className="animate-spin h-10 w-10 text-gray-900"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+            </div>
+          </WhiteScreen>
         )}
 
         {view === "error" && (
@@ -406,32 +603,39 @@ export default function App() {
             subtitle="We couldn't complete your verification."
             danger={errorMsg}
             navbarUrl={CONFIG.navbars.failure}
-            onBack={closeAndCleanup}
-            onRetry={() => {
-              setView("form");
-              setErrorMsg("");
+            onBack={() => {
+              closeAndCleanup();
+              setView("home");
             }}
           />
         )}
 
         {view === "final" && finalData && (
           <WhiteScreen
-            title={isApproved ? "You're approved ✅" : "We need to do further verification"}
-            subtitle={
-              isApproved
-                ? "Your verification looks good."
-                : `Please call us at ${CONFIG.supportPhone} and reference ${CONFIG.referenceCode}.`
-            }
-            navbarUrl={isApproved ? CONFIG.navbars.success : CONFIG.navbars.failure}
-            onBack={closeAndCleanup}
-            onRetry={!isApproved ? () => setView("form") : undefined}
-            ok={isApproved}
-            danger={!isApproved ? errorReason : undefined}
+            title={meta.title}
+            subtitle={meta.subtitle}
+            navbarUrl={meta.banner}
+            danger={meta.danger}
+            onBack={() => {
+              closeAndCleanup();
+              setView("home");
+            }}
           >
-            <div className="grid gap-4">
-              <InfoRow label="Verification status" value={finalData.status} />
-              <InfoRow label="Full name" value={computedFullName || "—"} />
-              <InfoRow label="Address" value={finalData.address_formatted} />
+            <div className="grid gap-3 w-full">
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Detailed Results</h3>
+
+              <InfoRow label="Verification Result" value={finalData.status} isBadge badgeMode="workflowStatus" />
+
+              <InfoRow label="Sub-Result" value={finalData.sub_result} isBadge />
+              <InfoRow label="Visual Authenticity" value={visualAuth} isBadge />
+              <InfoRow label="Digital Tampering" value={digitalTampering} isBadge />
+              <InfoRow label="Security Features" value={securityFeatures} isBadge />
+
+              <div className="my-6 border-t border-gray-100"></div>
+
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Personal Data</h3>
+              <InfoRow label="Full name" value={computedFullName || "N/A"} />
+              <InfoRow label="Address" value={addressStr} />
               <InfoRow label="Gender" value={finalData.gender} />
               <InfoRow label="Date of birth" value={finalData.dob} />
               <InfoRow label="Document number" value={finalData.document_number} />
