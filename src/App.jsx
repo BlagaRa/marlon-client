@@ -252,38 +252,47 @@ export default function App() {
       };
     }
 
-    // Visual Authenticity: can be at breakdown.visual_authenticity.result
-    const visualAuth =
-      breakdown?.visual_authenticity?.result ??
-      breakdown?.visual_authenticity ??
-      null;
+    // Visual Authenticity: Check multiple possible locations
+    // 1. Top-level: breakdown.visual_authenticity.result
+    // 2. In document_breakdown if available
+    // 3. Check all breakdowns in webhookData.breakdowns
+    let visualAuth = breakdown?.visual_authenticity?.result ?? null;
+
+    // Check document_breakdown if available
+    if (!visualAuth && webhookData?.document_breakdown) {
+      visualAuth = webhookData.document_breakdown?.visual_authenticity?.result ?? null;
+    }
+
+    // Check all breakdowns in breakdowns object
+    if (!visualAuth && webhookData?.breakdowns) {
+      for (const taskId in webhookData.breakdowns) {
+        const taskBreakdown = webhookData.breakdowns[taskId];
+        if (taskBreakdown?.visual_authenticity) {
+          visualAuth = taskBreakdown.visual_authenticity?.result ?? null;
+          if (visualAuth) break;
+        }
+      }
+    }
 
     // Digital Tampering: Check multiple possible locations
     // 1. Top-level: breakdown.digital_tampering.result
-    // 2. Nested: breakdown.visual_authenticity.breakdown.digital_tampering.result
+    // 2. Nested: breakdown.visual_authenticity.breakdown.digital_tampering.result (most common)
     // 3. In document_breakdown if available
     // 4. Check all breakdowns in webhookData.breakdowns
     let digitalTampering =
       breakdown?.digital_tampering?.result ??
-      breakdown?.digital_tampering ??
       breakdown?.visual_authenticity?.breakdown?.digital_tampering?.result ??
-      breakdown?.visual_authenticity?.breakdown?.digital_tampering ??
       null;
 
     // Check document_breakdown if available
     // Structure: document_breakdown.visual_authenticity.breakdown.digital_tampering.result
     if (!digitalTampering && webhookData?.document_breakdown) {
       // Check top-level
-      digitalTampering =
-        webhookData.document_breakdown?.digital_tampering?.result ??
-        webhookData.document_breakdown?.digital_tampering ??
-        null;
+      digitalTampering = webhookData.document_breakdown?.digital_tampering?.result ?? null;
       // Check nested in visual_authenticity.breakdown
-      if (!digitalTampering && webhookData.document_breakdown?.visual_authenticity?.breakdown?.digital_tampering) {
+      if (!digitalTampering) {
         digitalTampering =
-          webhookData.document_breakdown.visual_authenticity.breakdown.digital_tampering?.result ??
-          webhookData.document_breakdown.visual_authenticity.breakdown.digital_tampering ??
-          null;
+          webhookData.document_breakdown?.visual_authenticity?.breakdown?.digital_tampering?.result ?? null;
       }
     }
 
@@ -293,46 +302,35 @@ export default function App() {
       for (const taskId in webhookData.breakdowns) {
         const taskBreakdown = webhookData.breakdowns[taskId];
         // Check top-level first
-        if (taskBreakdown?.digital_tampering) {
-          digitalTampering =
-            taskBreakdown.digital_tampering?.result ??
-            taskBreakdown.digital_tampering ??
-            null;
-          if (digitalTampering) break;
-        }
+        digitalTampering = taskBreakdown?.digital_tampering?.result ?? null;
+        if (digitalTampering) break;
         // Check nested in visual_authenticity.breakdown
         if (!digitalTampering && taskBreakdown?.visual_authenticity?.breakdown?.digital_tampering) {
-          digitalTampering =
-            taskBreakdown.visual_authenticity.breakdown.digital_tampering?.result ??
-            taskBreakdown.visual_authenticity.breakdown.digital_tampering ??
-            null;
+          digitalTampering = taskBreakdown.visual_authenticity.breakdown.digital_tampering?.result ?? null;
           if (digitalTampering) break;
         }
       }
     }
 
     // Security Features: Check multiple possible locations
+    // 1. Top-level: breakdown.security_features.result
+    // 2. Nested: breakdown.visual_authenticity.breakdown.security_features.result (most common)
+    // 3. In document_breakdown if available
+    // 4. Check all breakdowns in webhookData.breakdowns
     let securityFeatures =
       breakdown?.security_features?.result ??
-      breakdown?.security_features ??
       breakdown?.visual_authenticity?.breakdown?.security_features?.result ??
-      breakdown?.visual_authenticity?.breakdown?.security_features ??
       null;
 
     // Check document_breakdown if available
     // Structure: document_breakdown.visual_authenticity.breakdown.security_features.result
     if (!securityFeatures && webhookData?.document_breakdown) {
       // Check top-level
-      securityFeatures =
-        webhookData.document_breakdown?.security_features?.result ??
-        webhookData.document_breakdown?.security_features ??
-        null;
+      securityFeatures = webhookData.document_breakdown?.security_features?.result ?? null;
       // Check nested in visual_authenticity.breakdown
-      if (!securityFeatures && webhookData.document_breakdown?.visual_authenticity?.breakdown?.security_features) {
+      if (!securityFeatures) {
         securityFeatures =
-          webhookData.document_breakdown.visual_authenticity.breakdown.security_features?.result ??
-          webhookData.document_breakdown.visual_authenticity.breakdown.security_features ??
-          null;
+          webhookData.document_breakdown?.visual_authenticity?.breakdown?.security_features?.result ?? null;
       }
     }
 
@@ -342,19 +340,11 @@ export default function App() {
       for (const taskId in webhookData.breakdowns) {
         const taskBreakdown = webhookData.breakdowns[taskId];
         // Check top-level first
-        if (taskBreakdown?.security_features) {
-          securityFeatures =
-            taskBreakdown.security_features?.result ??
-            taskBreakdown.security_features ??
-            null;
-          if (securityFeatures) break;
-        }
+        securityFeatures = taskBreakdown?.security_features?.result ?? null;
+        if (securityFeatures) break;
         // Check nested in visual_authenticity.breakdown
         if (!securityFeatures && taskBreakdown?.visual_authenticity?.breakdown?.security_features) {
-          securityFeatures =
-            taskBreakdown.visual_authenticity.breakdown.security_features?.result ??
-            taskBreakdown.visual_authenticity.breakdown.security_features ??
-            null;
+          securityFeatures = taskBreakdown.visual_authenticity.breakdown.security_features?.result ?? null;
           if (securityFeatures) break;
         }
       }
