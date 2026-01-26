@@ -243,112 +243,135 @@ export default function App() {
    * @param {Object} webhookData - Optional webhook data to check document_breakdown
    * @returns {Object} Object with visual_authenticity, digital_tampering, and security_features
    */
-  function extractVerificationResults(breakdown, webhookData = null) {
-    if (!breakdown || typeof breakdown !== "object") {
-      return {
-        visual_authenticity: null,
-        digital_tampering: null,
-        security_features: null,
-      };
-    }
+  function extractVerificationResults(breakdown, webhookData = null, merged = null, runOutput = null) {
+    let visualAuth = null;
+    let digitalTampering = null;
+    let securityFeatures = null;
 
-    // Visual Authenticity: Check multiple possible locations
-    // 1. Top-level: breakdown.visual_authenticity.result
-    // 2. In document_breakdown if available
-    // 3. Check all breakdowns in webhookData.breakdowns
-    let visualAuth = breakdown?.visual_authenticity?.result ?? null;
+    const checkBreakdown = (bd, source = "unknown") => {
+      if (!bd || typeof bd !== "object") return;
 
-    // Check document_breakdown if available
-    if (!visualAuth && webhookData?.document_breakdown) {
-      visualAuth = webhookData.document_breakdown?.visual_authenticity?.result ?? null;
-    }
-
-    // Check all breakdowns in breakdowns object
-    if (!visualAuth && webhookData?.breakdowns) {
-      for (const taskId in webhookData.breakdowns) {
-        const taskBreakdown = webhookData.breakdowns[taskId];
-        if (taskBreakdown?.visual_authenticity) {
-          visualAuth = taskBreakdown.visual_authenticity?.result ?? null;
-          if (visualAuth) break;
-        }
+      if (!visualAuth && bd?.visual_authenticity?.result != null) {
+        visualAuth = bd.visual_authenticity.result;
+        console.log(`[${source}] ✓ Found visual_authenticity: ${visualAuth}`);
+        console.log(`[${source}]   Structure check:`, {
+          has_digital_tampering: !!bd.visual_authenticity?.breakdown?.digital_tampering,
+          has_security_features: !!bd.visual_authenticity?.breakdown?.security_features,
+          has_liveness_detected: !!bd.visual_authenticity?.breakdown?.liveness_detected
+        });
       }
-    }
 
-    // Digital Tampering: Check multiple possible locations
-    // 1. Top-level: breakdown.digital_tampering.result
-    // 2. Nested: breakdown.visual_authenticity.breakdown.digital_tampering.result (most common)
-    // 3. In document_breakdown if available
-    // 4. Check all breakdowns in webhookData.breakdowns
-    let digitalTampering =
-      breakdown?.digital_tampering?.result ??
-      breakdown?.visual_authenticity?.breakdown?.digital_tampering?.result ??
-      null;
-
-    // Check document_breakdown if available
-    // Structure: document_breakdown.visual_authenticity.breakdown.digital_tampering.result
-    if (!digitalTampering && webhookData?.document_breakdown) {
-      // Check top-level
-      digitalTampering = webhookData.document_breakdown?.digital_tampering?.result ?? null;
-      // Check nested in visual_authenticity.breakdown
       if (!digitalTampering) {
-        digitalTampering =
-          webhookData.document_breakdown?.visual_authenticity?.breakdown?.digital_tampering?.result ?? null;
-      }
-    }
-
-    // Check all breakdowns in breakdowns object
-    // The structure is: breakdowns[taskId].visual_authenticity.breakdown.digital_tampering.result
-    if (!digitalTampering && webhookData?.breakdowns) {
-      for (const taskId in webhookData.breakdowns) {
-        const taskBreakdown = webhookData.breakdowns[taskId];
-        // Check top-level first
-        digitalTampering = taskBreakdown?.digital_tampering?.result ?? null;
-        if (digitalTampering) break;
-        // Check nested in visual_authenticity.breakdown
-        if (!digitalTampering && taskBreakdown?.visual_authenticity?.breakdown?.digital_tampering) {
-          digitalTampering = taskBreakdown.visual_authenticity.breakdown.digital_tampering?.result ?? null;
-          if (digitalTampering) break;
+        if (bd?.digital_tampering?.result != null) {
+          digitalTampering = bd.digital_tampering.result;
+          console.log(`[${source}] ✓ Found digital_tampering (direct): ${digitalTampering}`);
+        } else if (bd?.visual_authenticity?.breakdown?.digital_tampering?.result != null) {
+          digitalTampering = bd.visual_authenticity.breakdown.digital_tampering.result;
+          console.log(`[${source}] ✓ Found digital_tampering (from visual_authenticity.breakdown): ${digitalTampering}`);
         }
       }
-    }
 
-    // Security Features: Check multiple possible locations
-    // 1. Top-level: breakdown.security_features.result
-    // 2. Nested: breakdown.visual_authenticity.breakdown.security_features.result (most common)
-    // 3. In document_breakdown if available
-    // 4. Check all breakdowns in webhookData.breakdowns
-    let securityFeatures =
-      breakdown?.security_features?.result ??
-      breakdown?.visual_authenticity?.breakdown?.security_features?.result ??
-      null;
-
-    // Check document_breakdown if available
-    // Structure: document_breakdown.visual_authenticity.breakdown.security_features.result
-    if (!securityFeatures && webhookData?.document_breakdown) {
-      // Check top-level
-      securityFeatures = webhookData.document_breakdown?.security_features?.result ?? null;
-      // Check nested in visual_authenticity.breakdown
       if (!securityFeatures) {
-        securityFeatures =
-          webhookData.document_breakdown?.visual_authenticity?.breakdown?.security_features?.result ?? null;
+        if (bd?.security_features?.result != null) {
+          securityFeatures = bd.security_features.result;
+          console.log(`[${source}] ✓ Found security_features (direct): ${securityFeatures}`);
+        } else if (bd?.visual_authenticity?.breakdown?.security_features?.result != null) {
+          securityFeatures = bd.visual_authenticity.breakdown.security_features.result;
+          console.log(`[${source}] ✓ Found security_features (from visual_authenticity.breakdown): ${securityFeatures}`);
+        }
       }
-    }
+    };
 
-    // Check all breakdowns in breakdowns object
-    // The structure is: breakdowns[taskId].visual_authenticity.breakdown.security_features.result
-    if (!securityFeatures && webhookData?.breakdowns) {
+    const isCompleteDocumentBreakdown = (bd) => {
+      if (!bd || typeof bd !== "object") return false;
+      return (
+        bd?.visual_authenticity?.result != null &&
+        bd?.visual_authenticity?.breakdown?.digital_tampering?.result != null &&
+        bd?.visual_authenticity?.breakdown?.security_features?.result != null
+      );
+    };
+
+    console.log("=== EXTRACTING VERIFICATION RESULTS ===");
+    let foundCompleteBreakdown = false;
+
+    if (webhookData?.breakdowns && typeof webhookData.breakdowns === "object") {
+      console.log("Checking webhookData.breakdowns...");
       for (const taskId in webhookData.breakdowns) {
         const taskBreakdown = webhookData.breakdowns[taskId];
-        // Check top-level first
-        securityFeatures = taskBreakdown?.security_features?.result ?? null;
-        if (securityFeatures) break;
-        // Check nested in visual_authenticity.breakdown
-        if (!securityFeatures && taskBreakdown?.visual_authenticity?.breakdown?.security_features) {
-          securityFeatures = taskBreakdown.visual_authenticity.breakdown.security_features?.result ?? null;
-          if (securityFeatures) break;
+        if (isCompleteDocumentBreakdown(taskBreakdown)) {
+          console.log(`✓ Found complete breakdown in: webhookData.breakdowns["${taskId}"]`);
+          checkBreakdown(taskBreakdown, `webhookData.breakdowns["${taskId}"]`);
+          foundCompleteBreakdown = true;
+          break;
+        }
+      }
+      
+      if (!foundCompleteBreakdown) {
+        console.log("No complete breakdown found, checking all breakdowns...");
+        for (const taskId in webhookData.breakdowns) {
+          const taskBreakdown = webhookData.breakdowns[taskId];
+          checkBreakdown(taskBreakdown, `webhookData.breakdowns["${taskId}"]`);
+          if (visualAuth && digitalTampering && securityFeatures) break;
         }
       }
     }
+
+    if (!foundCompleteBreakdown && webhookData?.document_breakdown) {
+      console.log("Checking webhookData.document_breakdown...");
+      if (isCompleteDocumentBreakdown(webhookData.document_breakdown)) {
+        console.log("✓ Found complete breakdown in: webhookData.document_breakdown");
+        checkBreakdown(webhookData.document_breakdown, "webhookData.document_breakdown");
+        foundCompleteBreakdown = true;
+      } else {
+        checkBreakdown(webhookData.document_breakdown, "webhookData.document_breakdown");
+      }
+    }
+
+    if (!foundCompleteBreakdown && webhookData?.breakdown) {
+      console.log("Checking webhookData.breakdown...");
+      if (isCompleteDocumentBreakdown(webhookData.breakdown)) {
+        console.log("✓ Found complete breakdown in: webhookData.breakdown");
+        checkBreakdown(webhookData.breakdown, "webhookData.breakdown");
+        foundCompleteBreakdown = true;
+      } else {
+        checkBreakdown(webhookData.breakdown, "webhookData.breakdown");
+      }
+    }
+
+    if (!foundCompleteBreakdown && merged?.breakdown) {
+      console.log("Checking merged.breakdown...");
+      if (isCompleteDocumentBreakdown(merged.breakdown)) {
+        console.log("✓ Found complete breakdown in: merged.breakdown");
+        checkBreakdown(merged.breakdown, "merged.breakdown");
+        foundCompleteBreakdown = true;
+      } else {
+        checkBreakdown(merged.breakdown, "merged.breakdown");
+      }
+    }
+
+    if (!foundCompleteBreakdown && breakdown) {
+      console.log("Checking breakdown parameter...");
+      if (isCompleteDocumentBreakdown(breakdown)) {
+        console.log("✓ Found complete breakdown in: breakdown parameter");
+        checkBreakdown(breakdown, "breakdown parameter");
+        foundCompleteBreakdown = true;
+      } else {
+        checkBreakdown(breakdown, "breakdown parameter");
+      }
+    }
+
+    if (!foundCompleteBreakdown && (!visualAuth || !digitalTampering || !securityFeatures)) {
+      if (runOutput?.breakdown) {
+        console.log("Checking runOutput.breakdown (fallback)...");
+        checkBreakdown(runOutput.breakdown, "runOutput.breakdown");
+      }
+    }
+
+    console.log("=== EXTRACTION RESULTS ===");
+    console.log("visual_authenticity:", visualAuth);
+    console.log("digital_tampering:", digitalTampering);
+    console.log("security_features:", securityFeatures);
+    console.log("=== END EXTRACTION RESULTS ===");
 
     return {
       visual_authenticity: visualAuth,
@@ -363,46 +386,40 @@ export default function App() {
       fetchJSON(api(`/api/webhook_runs/${encodeURIComponent(id)}`)).catch(() => null),
     ]);
 
-    // Debug: Log raw webhook data structure
-    console.log("=== VERIFICATION DATA DEBUG ===");
-    console.log("Raw webhookData:", webhookData);
-    console.log("Raw runData.output:", runData?.output);
-
     const runOutput = runData?.output || {};
     const merged = webhookData?.raw_output || {};
 
-    const breakdown =
-      webhookData?.breakdown ||
-      merged?.breakdown ||
-      runOutput?.breakdown ||
-      {};
+    let breakdown = {};
 
-    // Debug: Log breakdown structure
-    console.log("Raw breakdown object:", breakdown);
-    console.log("Breakdown keys:", breakdown ? Object.keys(breakdown) : "No breakdown");
-    console.log("webhookData.document_breakdown:", webhookData?.document_breakdown);
-    console.log("webhookData.breakdowns:", webhookData?.breakdowns);
-    
-    // Log full structure for digital_tampering and security_features
-    if (breakdown) {
-      console.log("Checking for digital_tampering in breakdown:", breakdown.digital_tampering);
-      console.log("Checking for security_features in breakdown:", breakdown.security_features);
-      if (breakdown.visual_authenticity?.breakdown) {
-        console.log("visual_authenticity.breakdown keys:", Object.keys(breakdown.visual_authenticity.breakdown));
-        console.log("visual_authenticity.breakdown.digital_tampering:", breakdown.visual_authenticity.breakdown.digital_tampering);
-        console.log("visual_authenticity.breakdown.security_features:", breakdown.visual_authenticity.breakdown.security_features);
-      }
+    console.log("=== BREAKDOWN SELECTION ===");
+    if (webhookData?.breakdowns?.["document_check_with_address_information"]) {
+      breakdown = webhookData.breakdowns["document_check_with_address_information"];
+      console.log("✓ Selected: webhookData.breakdowns['document_check_with_address_information']");
+      console.log("  Structure:", {
+        has_visual_authenticity: !!breakdown.visual_authenticity,
+        has_digital_tampering: !!breakdown.visual_authenticity?.breakdown?.digital_tampering,
+        has_security_features: !!breakdown.visual_authenticity?.breakdown?.security_features,
+        has_liveness_detected: !!breakdown.visual_authenticity?.breakdown?.liveness_detected
+      });
+    } else if (webhookData?.document_breakdown) {
+      breakdown = webhookData.document_breakdown;
+      console.log("✓ Selected: webhookData.document_breakdown");
+    } else if (webhookData?.breakdown) {
+      breakdown = webhookData.breakdown;
+      console.log("⚠ Selected: webhookData.breakdown (may be from face_check_motion)");
+    } else if (merged?.breakdown) {
+      breakdown = merged.breakdown;
+      console.log("⚠ Selected: merged.breakdown");
+    } else if (runOutput?.breakdown) {
+      breakdown = runOutput.breakdown;
+      console.log("⚠ Selected: runOutput.breakdown");
+    } else {
+      console.log("⚠ Selected: empty object");
     }
+    console.log("Selected breakdown:", breakdown);
+    console.log("=== END BREAKDOWN SELECTION ===");
 
-    // Extract verification results using the robust extraction function
-    const verificationResults = extractVerificationResults(breakdown, webhookData);
-
-    // Debug: Log extracted verification results
-    console.log("Extracted verification results:", verificationResults);
-    console.log("Visual Authenticity:", verificationResults.visual_authenticity);
-    console.log("Digital Tampering:", verificationResults.digital_tampering);
-    console.log("Security Features:", verificationResults.security_features);
-    console.log("=== END DEBUG ===");
+    const verificationResults = extractVerificationResults(breakdown, webhookData, merged, runOutput);
 
     const subResult =
       runOutput?.sub_result ??
@@ -421,21 +438,21 @@ export default function App() {
     const last = merged?.last_name || runOutput?.last_name;
 
     setFinalData({
-      status: runData.status,
+      status: runData?.status || null,
       sub_result: subResult,
-      full_name: runData.full_name || [first, last].filter(Boolean).join(" ") || "",
-      workflow_run_id: runData.workflow_run_id,
+      full_name: runData?.full_name || [first, last].filter(Boolean).join(" ") || "",
+      workflow_run_id: runData?.workflow_run_id || null,
 
       webhook: webhookData || null,
       breakdown,
-      verificationResults, // Store extracted results for use in render
+      verificationResults,
 
       address: addrObj,
-      gender: merged?.gender || runOutput?.gender,
-      dob: merged?.date_of_birth || runOutput?.dob || runOutput?.date_of_birth,
-      document_number: merged?.document_number || runOutput?.document_number,
-      document_type: merged?.document_type || runOutput?.document_type,
-      date_expiry: merged?.date_of_expiry || runOutput?.date_expiry || runOutput?.date_of_expiry,
+      gender: merged?.gender || runOutput?.gender || null,
+      dob: merged?.date_of_birth || runOutput?.dob || runOutput?.date_of_birth || null,
+      document_number: merged?.document_number || runOutput?.document_number || null,
+      document_type: merged?.document_type || runOutput?.document_type || null,
+      date_expiry: merged?.date_of_expiry || runOutput?.date_expiry || runOutput?.date_of_expiry || null,
     });
 
     setView("final");
@@ -518,23 +535,14 @@ export default function App() {
 
   const computedFullName = finalData?.full_name || [firstName, lastName].filter(Boolean).join(" ");
   const breakdown = finalData?.breakdown || {};
-  
-  // Use extracted verification results if available, otherwise extract on the fly
-  const verificationResults = finalData?.verificationResults || extractVerificationResults(breakdown, finalData?.webhook);
-  
-  // Extract values with proper fallback to "N/A"
+  const webhookData = finalData?.webhook || null;
+  const merged = webhookData?.raw_output || null;
+
+  const verificationResults = finalData?.verificationResults || extractVerificationResults(breakdown, webhookData, merged, null);
+  console.log("verification Results:", verificationResults);
   const visualAuth = verificationResults.visual_authenticity ?? "N/A";
   const digitalTampering = verificationResults.digital_tampering ?? "N/A";
   const securityFeatures = verificationResults.security_features ?? "N/A";
-
-  // Debug: Log final computed values before display
-  if (finalData) {
-    console.log("=== FINAL DISPLAY VALUES ===");
-    console.log("Visual Authenticity (display):", visualAuth);
-    console.log("Digital Tampering (display):", digitalTampering);
-    console.log("Security Features (display):", securityFeatures);
-    console.log("=== END DISPLAY DEBUG ===");
-  }
 
   let addressStr = "N/A";
   if (finalData?.address) {
